@@ -1,6 +1,6 @@
 # Bandpass Amplitude Anomaly Classifier
 
-A machine learning pipeline designed to identify and classify amplitude anomalies in bandpass calibration spectra (e.g., from CASA tables) using XGBoost. The system processes raw calibration tables, extracts robust features (including atmospheric transmission and scan statistics), maps flag templates to train labels, and outputs predictions on unseen calibration tables.
+A machine learning pipeline designed to classify amplitude anomalies in bandpass calibration spectra (e.g., from ALMA calibration tables) using XGBoost. The system processes raw calibration tables, extracts features (including scan statistics based scores and ALMA receiver bands), maps flag templates to train labels, and outputs predictions on unseen calibration tables.
 
 ---
 
@@ -40,7 +40,6 @@ bandpass_classifier/
 │       ├── model.json              # Trained XGBoost model (generated after training)
 │       └── column_categories.json  # Categorical feature mapping (generated after training)
 ├── environment.yml                 # Conda environment configuration
-├── pyrefly.toml                    # Linter/Static analysis config
 └── README.md                       # Documentation (this file)
 ```
 
@@ -59,7 +58,7 @@ graph TD
     
     %% Training Flow
     D --> E[Train Pipeline]
-    F[Flag templates .flagtemplate.txt] --> G[Label Broadcaster]
+    F[Flag templates .flagtemplate.txt] --> G[Label Broadcasting]
     G --> E
     E --> H[Symmetric Data Augmentation]
     H --> I[XGBoost Classifier Training]
