@@ -1,0 +1,21 @@
+# Requirements converted from environment.yml
+
+# Scientific and Data libraries
+numpy>=2.2
+pandas>=1.5
+scipy>=1.8
+scikit-learn>=1.0
+xgboost>=1.6
+numba>=0.63
+joblib>=1.0
+pyarrow
+matplotlib
+tqdm
+types-tqdm
+setuptools
+optuna
+
+
+# CASA libraries
+casaconfig>=1.0.0
+casatools>=6.5.0

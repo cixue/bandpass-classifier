@@ -1,0 +1,104 @@
+description = """
+Placeholder text for model description
+"""
+
+
+# Paths for exporting or importing the model
+[model]
+path = "models/v1/model.json"
+column_categories = "models/v1/column_categories.json"
+
+
+# Model features. There are two types of features:
+# (1) Features that are identical for both spectra in the spectrum pair.
+# (2) Features that are specific to each spectrum.
+# 
+# After pairing spectra, features of the first type will be selected from either
+# of the spectra. The selected features of the first type will be appended with
+# the features of the second type from both spectra. For example:
+# shared_features_1,
+# ...
+# spectrum_features_1[0],
+# spectrum_features_2[0],
+# ...
+# spectrum_features_1[1],
+# spectrum_features_2[1],
+# ...
+# [i] denotes the feature extracted from the i-th spectrum of the pair.
+[features]
+shared_features = ["receiver_band", "channel_spacing"]
+spectrum_features = [
+    "amp_norm_nmad_diff4",
+    "score_masked",
+    "score_unmasked",
+    "score_fixed",
+    "segment_width_masked",
+    "segment_width_unmasked",
+    "segment_width_fixed",
+]
+categorical_features = ["receiver_band"]
+paired_level = ["eb_uid", "spw_name_ms", "antenna_name"]
+
+# External data required for extraction of some features
+[features.external_data]
+transmission_path = "inputs/full_spectrum.gzip"
+
+
+[prediction]
+# If enabled, predict using both spectrum pair permutations. Options:
+# - disabled: use any permutation
+# - loose: only return true (is anomaly) when both permutations return true
+# - strict: return true when any permutation returns true
+symmetric = "disabled"
+
+
+# Required for training only
+[training.data]
+bandpass_table_pattern = "inputs/data/*/science_goal.*/group.*/member.*/calibrated/working/*.solintinf.bcal.tbl"
+flagtemplate_pattern = "inputs/data/*/science_goal.*/group.*/member.*/calibration/*.flagtemplate.txt"
+anomaly_reasons = [
+    "QA2:bandpass_amplitude_frequency",
+    "QA2:bandpassflag_amplitude_frequency",
+    # "QA2:bandpass_amplitude_time",
+]
+
+[training.hyperparameters]
+n_estimators = 200
+learning_rate = 0.05
+max_depth = 7
+subsample = 0.5
+eval_metric = "aucpr"
+
+[training.strategy]
+# Determines how to split data into train and test datasets. For example,
+# - ["eb_uid"]
+#     - all data of same eb_uid belongs to the same dataset.
+# - ["eb_uid", "spw_name_ms", "antenna_name"]
+#     - data of same eb_uid could belong to different dataset as long as their
+#       spw_name_ms or antenna_name are different
+data_aggregation_level = ["eb_uid", "spw_name_ms", "antenna_name"]
+# If enabled, training dataset are duplicated to include both spectrum pair
+# permutations to ensure symmetric model.
+symmetric = true
+weight_factor = 1.0
+
+
+[training.evaluation]
+symmetric = true
+
+[training.tuning]
+enabled = true
+method = "grid_search"
+outer_folds = 5
+inner_folds = 5
+
+[training.tuning.grid_search_space]
+max_depth = [5, 7]
+learning_rate = [0.05, 0.1]
+n_estimators = [100, 200]
+
+[training.tuning.optuna_space]
+n_trials = 10
+max_depth = [3, 9]
+learning_rate = [0.01, 0.1]
+n_estimators = [100, 250]

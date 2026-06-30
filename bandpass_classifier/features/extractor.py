@@ -1,0 +1,285 @@
+"""Feature extraction engine for bandpass spectra.
+
+This module provides the core `Extractor` class that manages feature registration,
+calculates feature dependency graphs, and runs extraction pipelines in parallel.
+It also provides initializer and wrapper functions to extract paired features.
+"""
+
+from functools import partial
+from graphlib import CycleError, TopologicalSorter
+from typing import Any, Callable, Dict, List, Optional, Set
+
+import numpy as np
+import pandas as pd
+from tqdm.contrib.concurrent import process_map
+
+__all__ = ["Extractor"]
+
+
+class Extractor:
+    """A registry and execution framework for feature extraction on DataFrames.
+
+    Supports dependency resolution via topological sorting and parallel chunked processing.
+
+    Attributes:
+        _registry (Dict[str, Dict[str, Any]]): The internal registry mapping feature
+            names to their specification (function, dependencies, external data requirements).
+        _external_data_repository (Dict[str, Any]): Repository of global external data
+            needed by extractor functions.
+    """
+
+    _registry: Dict[str, Dict[str, Any]] = {}
+    _external_data_repository: Dict[str, Any] = {}
+
+    @classmethod
+    def register(
+        cls,
+        name: Optional[str] = None,
+        deps: Optional[List[str]] = None,
+        external_data: Optional[List[str]] = None,
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        """Decorator to register a feature extraction function.
+
+        Args:
+            name: Custom feature name. Defaults to the decorated function's name.
+            deps: List of feature names this feature depends on.
+            external_data: List of keys in the external data repository required by this feature.
+
+        Returns:
+            Callable: The decorator function wrapping the registered feature function.
+        """
+        if deps is None:
+            deps = []
+
+        if external_data is None:
+            external_data = []
+
+        def wrapper(func: Callable[..., Any]) -> Callable[..., Any]:
+            feature_name = func.__name__ if name is None else name
+            cls._registry[feature_name] = {
+                "func": func,
+                "deps": set(deps),
+                "external_data": set(external_data),
+            }
+            return func
+
+        return wrapper
+
+    @classmethod
+    def provide_external_data(cls, **provided_data: Any) -> None:
+        """Injects external reference datasets into the extractor repository.
+
+        Args:
+            **provided_data: Arbitrary keyword arguments mapping data identifiers
+                to their values.
+
+        Raises:
+            ValueError: If an external dataset key has already been registered.
+        """
+        for key, value in provided_data.items():
+            if key in cls._external_data_repository:
+                raise ValueError(f"External data {key} has already been provided.")
+            cls._external_data_repository[key] = value
+
+    @classmethod
+    def reset_external_data(cls) -> None:
+        """Clears the external data repository."""
+        cls._external_data_repository.clear()
+
+    @classmethod
+    def extract(
+        cls,
+        df: pd.DataFrame,
+        *,
+        features: List[str],
+        chunk_size: int = 16,
+        max_workers: Optional[int] = None,
+    ) -> pd.DataFrame:
+        """Extracts specified features from the input DataFrame.
+
+        Resolves dependencies topologically, splits the input DataFrame into chunks,
+        processes them in parallel, and gathers the requested features.
+
+        Args:
+            df: Input DataFrame.
+            features: List of feature names to extract.
+            chunk_size: Number of rows per parallel processing chunk.
+            max_workers: The maximum number of worker processes.
+
+        Returns:
+            pd.DataFrame: A DataFrame containing the requested features.
+
+        Raises:
+            ValueError: If dependencies or external data dependencies cannot be resolved.
+            CycleError: If a cyclic dependency is detected among the features.
+        """
+        # Make a copy to prevent modifying input
+        requested_features = set(features)
+        required_external_data: Set[str] = set()
+
+        required_features: Set[str] = set()
+        derived_features: Set[str] = set()
+        while requested_features:
+            feature = requested_features.pop()
+            if feature not in cls._registry:
+                required_features.add(feature)
+                continue
+            derived_features.add(feature)
+            requested_features.update(cls._registry[feature]["deps"] - derived_features)
+            required_external_data.update(cls._registry[feature]["external_data"])
+
+        missing_required_features = required_features - set(df.columns)
+        if missing_required_features:
+            raise ValueError(
+                f"The following features cannot be derived and not provided: {missing_required_features}"
+            )
+
+        missing_required_external_data = required_external_data - set(
+            cls._external_data_repository.keys()
+        )
+        if missing_required_external_data:
+            raise ValueError(
+                f"The following external data are not provided: {missing_required_external_data}"
+            )
+
+        try:
+            extraction_order = list(
+                TopologicalSorter(
+                    {
+                        feature: cls._registry[feature]["deps"] - required_features
+                        for feature in derived_features
+                    }
+                ).static_order()
+            )
+        except CycleError as e:
+            raise CycleError(f"Cyclic dependency found: {' -> '.join(e.args[1])}")
+
+        chunks = [df.iloc[i : i + chunk_size] for i in range(0, len(df), chunk_size)]
+        processed_chunks = process_map(
+            partial(
+                cls._process_chunk,
+                required_features=required_features,
+                extraction_order=extraction_order,
+                registry=cls._registry,
+                external_data_repository=cls._external_data_repository,
+            ),
+            chunks,
+            chunksize=1,
+            max_workers=max_workers,
+        )
+
+        # Strip out intermediate results.
+        result = pd.concat(processed_chunks)[features]
+        assert isinstance(result, pd.DataFrame)
+        return result
+
+    @staticmethod
+    def _process_chunk(
+        chunk: pd.DataFrame,
+        *,
+        required_features: Set[str],
+        extraction_order: List[str],
+        registry: Dict[str, Dict[str, Any]],
+        external_data_repository: Dict[str, Any],
+    ) -> pd.DataFrame:
+        """Processes a single DataFrame chunk by calculating features in extraction order.
+
+        Args:
+            chunk: Subset DataFrame.
+            required_features: Initial columns to copy from input chunk.
+            extraction_order: Ordered list of features to evaluate.
+            registry: The extractor registry dictionary.
+            external_data_repository: Injectable external datasets.
+
+        Returns:
+            pd.DataFrame: Computed feature DataFrame.
+        """
+        # Extract all features including intermediate results.
+        output_df = pd.DataFrame(index=chunk.index)
+        for feature in required_features:
+            output_df[feature] = chunk[feature]
+        for feature in extraction_order:
+            feature_spec = registry[feature]
+            requested_columns = output_df[list(feature_spec["deps"])]
+            requested_external_data = {
+                key: external_data_repository[key]
+                for key in feature_spec["external_data"]
+            }
+            output_df[feature] = feature_spec["func"](
+                requested_columns, **requested_external_data
+            )
+        return output_df
+
+
+def initialize_feature_extractor(config: dict) -> None:
+    """Initializes the feature extractor with global configurations and external data.
+
+    Args:
+        config: The configuration dictionary.
+    """
+    Extractor.reset_external_data()
+    Extractor.provide_external_data(**config["features"]["external_data"])
+
+
+def extract_paired_features(
+    bandpass_table_df: pd.DataFrame, config: dict
+) -> pd.DataFrame:
+    """Extracts features and joins them into pairs based on configured settings.
+
+    Args:
+        bandpass_table_df: Raw input DataFrame.
+        config: Configuration dictionary specifying features and pairings.
+
+    Returns:
+        pd.DataFrame: A DataFrame of paired features.
+    """
+    requested_features = (
+        config["features"]["shared_features"] + config["features"]["spectrum_features"]
+    )
+    all_features = Extractor.extract(bandpass_table_df, features=requested_features)
+    return get_paired_features(
+        all_features,
+        config["features"]["paired_level"],
+        config["features"]["shared_features"],
+        config["features"]["spectrum_features"],
+    )
+
+
+def get_paired_features(
+    features: pd.DataFrame,
+    level: List[str],
+    shared_features_list: List[str],
+    spectrum_features_list: List[str],
+) -> pd.DataFrame:
+    """Groups features and combines spectrum pairs side-by-side.
+
+    For spectrum features, columns are split and suffixed with '_0' and '_1' representing
+    each spectrum in a pair. Shared features are group-deduplicated.
+
+    Args:
+        features: Computed features DataFrame.
+        level: MultiIndex level names matching the spectrum pairs.
+        shared_features_list: Columns representing identical properties in a pair.
+        spectrum_features_list: Columns representing individual spectrum features.
+
+    Returns:
+        pd.DataFrame: Paired and joined features DataFrame.
+    """
+    features = features.reset_index(
+        [name for name in features.index.names if name not in level], drop=True
+    )
+    shared_features = (
+        features[shared_features_list].groupby(features.index.names).first()
+    )
+    spectrum_features = features[spectrum_features_list]
+    spectrum_features = spectrum_features.groupby(level).filter(lambda x: len(x) == 2).copy()
+    spectrum_features["_row_number_"] = spectrum_features.groupby(
+        spectrum_features.index.names
+    ).cumcount()
+    spectrum_features = spectrum_features.set_index(
+        "_row_number_", append=True
+    ).unstack("_row_number_")
+    spectrum_features.columns = spectrum_features.columns.to_flat_index().map(
+        lambda x: "_".join(map(str, x))
+    )
+    return shared_features.join(spectrum_features, how="inner")
