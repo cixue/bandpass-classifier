@@ -12,7 +12,7 @@ from bandpass_classifier.features.extractor import Extractor
 
 
 def nmad(arr: np.ndarray) -> float:
-    """Calculates the Normalized Median Absolute Deviation (NMAD).
+    """Calculates the Normalized Median Absolute Deviation (NMAD) ignoring NaNs.
 
     Args:
         arr: The input numpy array.
@@ -20,7 +20,7 @@ def nmad(arr: np.ndarray) -> float:
     Returns:
         float: The NMAD score of the array.
     """
-    return 1.4826 * np.median(np.fabs(arr - np.median(arr)))
+    return 1.4826 * np.nanmedian(np.fabs(arr - np.nanmedian(arr)))
 
 
 @Extractor.register(deps=["spw_name"])
@@ -62,30 +62,47 @@ def amplitude(df: pd.DataFrame) -> pd.Series:
     return df["CPARAM"].transform(np.absolute)
 
 
-@Extractor.register(deps=["amplitude"])
-def amp_nmad_diff4(df: pd.DataFrame) -> pd.Series:
-    """Computes the NMAD of the difference between channels spaced 4 units apart.
+@Extractor.register(deps=["amplitude", "flag_array"])
+def amplitude_flagged(df: pd.DataFrame) -> pd.Series:
+    """Flags amplitude with flagged values replaced with NaNs.
 
     Args:
-        df: A pandas DataFrame containing the 'amplitude' column.
+        df: A pandas DataFrame containing the unflagged 'amplitude' and 'flag_array' columns.
+
+    Returns:
+        pd.Series: The flagged amplitude values.
+    """
+    return df.apply(
+        lambda row: np.where(row["flag_array"], np.nan, row["amplitude"]), axis=1
+    )
+
+
+@Extractor.register(deps=["amplitude_flagged"])
+def amp_nmad_diff4(df: pd.DataFrame) -> pd.Series:
+    """Computes the NMAD of the difference between channels spaced 4 units apart.
+    Channels containing NaN values do not contribute toward the calculation of `nmad_diff4`.
+
+    Args:
+        df: A pandas DataFrame containing the 'amplitude_flagged' column.
 
     Returns:
         pd.Series: The NMAD score of the 4-channel differences.
     """
-    return df["amplitude"].transform(lambda amp: nmad(amp[:-4] - amp[4:]))
+    return df["amplitude_flagged"].transform(lambda amp: nmad(amp[:-4] - amp[4:]))
 
 
-@Extractor.register(deps=["amplitude"])
+@Extractor.register(deps=["amplitude_flagged"])
 def amp_nmad(df: pd.DataFrame) -> pd.Series:
-    """Computes the NMAD of the amplitude spectrum.
+    """Computes the NMAD of the amplitude_flagged spectrum.
+    Channels containing NaN values do not contribute toward the calculation of `nmad`.
 
     Args:
-        df: A pandas DataFrame containing the 'amplitude' column.
+        df: A pandas DataFrame containing the 'amplitude_flagged' column.
 
     Returns:
-        pd.Series: The NMAD score of the amplitude.
+        pd.Series: The NMAD score of the amplitude_flagged.
     """
-    return df["amplitude"].transform(nmad)
+    return df["amplitude_flagged"].transform(nmad)
 
 
 @Extractor.register(deps=["amp_nmad_diff4", "amp_nmad"])
@@ -125,4 +142,3 @@ def central_frequency(df: pd.DataFrame) -> pd.Series:
         pd.Series: The median frequency of the spectrum.
     """
     return df["frequency_array"].transform(lambda arr: np.median(arr))
-
