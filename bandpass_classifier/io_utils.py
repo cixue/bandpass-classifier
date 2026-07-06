@@ -12,6 +12,7 @@ from typing import List, Literal, overload, Tuple, Union
 # Note: casaconfig configuration must happen prior to importing casatools.table
 # to properly suppress logs and auto-updates.
 from casaconfig import config
+
 config.logfile = None  # type: ignore # Suppress casa log file generation
 config.data_auto_update = False  # type: ignore # Do not check for updates
 config.measures_auto_update = False  # type: ignore
@@ -19,7 +20,9 @@ config.measures_auto_update = False  # type: ignore
 from casatools import table
 import numpy as np
 import pandas as pd
+
 pd.options.future.infer_string = True
+
 
 def get_eb_uid_from_filename(
     filename: str,
@@ -48,7 +51,8 @@ def get_partial_dataframe(
     path: Union[Path, str],
     columns: List[str],
     include_eb_uid: Literal[False] = False,
-) -> pd.DataFrame: ...
+) -> pd.DataFrame:
+    ...
 
 
 @overload
@@ -56,7 +60,8 @@ def get_partial_dataframe(
     path: Union[Path, str],
     columns: List[str],
     include_eb_uid: Literal[True],
-) -> Tuple[str, pd.DataFrame]: ...
+) -> Tuple[str, pd.DataFrame]:
+    ...
 
 
 @overload
@@ -64,7 +69,8 @@ def get_partial_dataframe(
     path: Union[Path, str],
     columns: List[str],
     include_eb_uid: bool,
-) -> Union[pd.DataFrame, Tuple[str, pd.DataFrame]]: ...
+) -> Union[pd.DataFrame, Tuple[str, pd.DataFrame]]:
+    ...
 
 
 def get_partial_dataframe(
@@ -159,6 +165,35 @@ def get_full_dataframe(path: Union[Path, str]) -> pd.DataFrame:
     return full_table.set_index(indices)
 
 
+def filter_degenerate_row(df: pd.DataFrame) -> pd.DataFrame:
+    """Filter out degenerate amplitude rows and completely flagged rows"""
+
+    def is_amplitude_degenerate(cparam: np.ndarray) -> bool:
+        """Checks if the amplitude (absolute value of CPARAM) is a single value, comparing to nanmean."""
+        amp = np.absolute(cparam)
+        if len(amp) == 0:
+            return True
+        mean_val = np.nanmean(amp)
+        if np.isnan(mean_val):
+            return True
+        amp_filled = np.where(np.isnan(amp), mean_val, amp)
+        return np.allclose(amp_filled, mean_val)
+
+    def is_completely_flagged(flag_array: np.ndarray) -> bool:
+        """Checks if the flag_array is entirely True."""
+        if len(flag_array) == 0:
+            return True
+        return bool(np.all(flag_array))
+
+    initial_len = len(df)
+    df = df[~df["CPARAM"].apply(is_amplitude_degenerate)]
+    df = df[~df["flag_array"].apply(is_completely_flagged)]
+    print(
+        f"Filtered out {initial_len - len(df)} degenerate/flagged rows. Remaining: {len(df)}"
+    )
+    return df
+
+
 def get_flagtemplate_dataframe(path: Union[Path, str]) -> pd.DataFrame:
     """Parses a CASA flagtemplate file into a pandas DataFrame.
 
@@ -217,4 +252,3 @@ def get_flagtemplate_dataframe(path: Union[Path, str]) -> pd.DataFrame:
             returned_df = returned_df.assign(**{index: pd.NA})
 
     return returned_df.set_index(indices)
-

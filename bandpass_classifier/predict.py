@@ -13,7 +13,7 @@ import pandas as pd
 from xgboost import XGBClassifier
 
 from .features.extractor import extract_paired_features, initialize_feature_extractor
-from .io_utils import get_full_dataframe
+from .io_utils import get_full_dataframe, filter_degenerate_row
 from .utils import convert_to_category
 
 
@@ -39,6 +39,7 @@ def main() -> None:
     with open(args.config, "rb") as f:
         config = tomllib.load(f)
     bandpass_table_df = get_full_dataframe(args.bandpass_table)
+    bandpass_table_df = filter_degenerate_row(bandpass_table_df)
 
     initialize_feature_extractor(config)
     all_paired_features = extract_paired_features(bandpass_table_df, config)

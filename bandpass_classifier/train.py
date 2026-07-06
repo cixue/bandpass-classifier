@@ -22,7 +22,7 @@ from sklearn.metrics import fbeta_score, confusion_matrix
 from xgboost import XGBClassifier
 
 from .features.extractor import extract_paired_features, initialize_feature_extractor
-from .io_utils import get_flagtemplate_dataframe, get_full_dataframe
+from .io_utils import get_flagtemplate_dataframe, get_full_dataframe, filter_degenerate_row
 from .utils import broadcast_na, convert_to_category
 
 
@@ -252,25 +252,6 @@ def train_model(
 
     model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
     return model
-
-
-def is_amplitude_degenerate(cparam: np.ndarray) -> bool:
-    """Checks if the amplitude (absolute value of CPARAM) is a single value, comparing to nanmean."""
-    amp = np.absolute(cparam)
-    if len(amp) == 0:
-        return True
-    mean_val = np.nanmean(amp)
-    if np.isnan(mean_val):
-        return True
-    amp_filled = np.where(np.isnan(amp), mean_val, amp)
-    return np.allclose(amp_filled, mean_val)
-
-
-def is_completely_flagged(flag_array: np.ndarray) -> bool:
-    """Checks if the flag_array is entirely True."""
-    if len(flag_array) == 0:
-        return True
-    return bool(np.all(flag_array))
 
 
 def compute_f2_score(y_true, y_pred):
@@ -582,15 +563,7 @@ def main() -> None:
 
     assert isinstance(bandpass_table_df, pd.DataFrame)
 
-    # Filter out degenerate amplitude rows and completely flagged rows
-    initial_len = len(bandpass_table_df)
-    bandpass_table_df = bandpass_table_df[
-        ~bandpass_table_df["CPARAM"].apply(is_amplitude_degenerate)
-    ]
-    bandpass_table_df = bandpass_table_df[
-        ~bandpass_table_df["flag_array"].apply(is_completely_flagged)
-    ]
-    print(f"Filtered out {initial_len - len(bandpass_table_df)} degenerate/flagged rows. Remaining: {len(bandpass_table_df)}")
+    bandpass_table_df = filter_degenerate_row(bandpass_table_df)
 
     initialize_feature_extractor(config)
 
