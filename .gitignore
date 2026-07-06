@@ -34,3 +34,7 @@ Thumbs.db
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Data, configs, and outputs
+inputs/
+models/

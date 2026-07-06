@@ -38,6 +38,7 @@ def get_all_bandpass_table_df(config: dict) -> pd.DataFrame:
     all_bandpass_table_path = list(
         map(Path, glob.glob(config["training"]["data"]["bandpass_table_pattern"]))
     )
+    print(f"Training model on {len(all_bandpass_table_path)} bandpass tables.")
     return pd.concat([get_full_dataframe(path) for path in all_bandpass_table_path])
 
 
