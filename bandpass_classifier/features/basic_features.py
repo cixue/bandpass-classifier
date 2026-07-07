@@ -142,3 +142,32 @@ def central_frequency(df: pd.DataFrame) -> pd.Series:
         pd.Series: The median frequency of the spectrum.
     """
     return df["frequency_array"].transform(lambda arr: np.median(arr))
+
+
+@Extractor.register(deps=["amplitude_flagged"])
+def amp_top_norm_discontinuity(df: pd.DataFrame) -> pd.Series:
+    """Calculates the largest edge discontinuity in a spectrum. A edge discontinuity is
+    defined to be the absolute lag-1 difference, with the search restricted to the first
+    and last 10% of channels (bounded by the first/last valid, non-NaN indices),
+    normalized by the MAD of the lag-1 differences computed over the entire spectrum.
+
+    Args:
+        df: A pandas DataFrame containing the 'amplitude_flagged' column.
+
+    Returns:
+        pd.Series: The top normalized edge discontinuity in amplitude_flagged.
+    """
+
+    def diff(arr, k=1):
+        return arr[:-k] - arr[k:]
+
+    def top_norm_discontinuity(arr):
+        valid_indices = np.where(~np.isnan(arr))[0]
+        min_index, max_index = valid_indices[0], valid_indices[-1]
+        num_channel = max(4, int((max_index - min_index) * 0.1))
+        arr_head = np.fabs(diff(arr[min_index : min_index + num_channel]))
+        arr_tail = np.fabs(diff(arr[max_index + 1 - num_channel : max_index + 1]))
+        arr_variation = nmad(diff(arr))
+        return np.nanmax([arr_head, arr_tail]) / arr_variation
+
+    return df["amplitude_flagged"].apply(top_norm_discontinuity)
