@@ -191,7 +191,7 @@ def prepare_data(
         paired_features,
         label,
         test_indices,
-        symmetric=config["training"]["evaluation"]["symmetric"],
+        symmetric=config["prediction"]["symmetric"] != "disabled",
     )
 
     column_categories = dict()
@@ -419,29 +419,41 @@ def run_nested_cv(
         )
         model = train_model(X_tr_outer, y_tr_outer, X_te_outer, y_te_outer, config, best_params)
         
-        preds_outer = model.predict(X_te_outer)
-        score_outer = compute_f2_score(y_te_outer, preds_outer)
+        # Convert predictions to a Series indexed identically to y_te_outer
+        preds_outer_series = pd.Series(model.predict(X_te_outer), index=y_te_outer.index, dtype=bool)
+        
+        # Group and aggregate based on prediction.symmetric configuration
+        symmetric_mode = config["prediction"].get("symmetric", "disabled")
+        if symmetric_mode == "loose":
+            preds_grouped = preds_outer_series.groupby(preds_outer_series.index).all()
+        elif symmetric_mode == "strict":
+            preds_grouped = preds_outer_series.groupby(preds_outer_series.index).any()
+        else:
+            preds_grouped = preds_outer_series.groupby(preds_outer_series.index).first()
+            
+        y_te_grouped = y_te_outer.groupby(y_te_outer.index).first()
+        
+        # Reindex to match the original test index exactly (ensuring same ordering)
+        preds_grouped = preds_grouped.reindex(test_outer_idx)
+        y_te_grouped = y_te_grouped.reindex(test_outer_idx)
+        
+        score_outer = compute_f2_score(y_te_grouped, preds_grouped)
         print(f"Outer Fold {i+1} Test F2 Score: {score_outer:.4f}")
         outer_scores.append(score_outer)
         
         # Calculate confusion matrix for this fold
-        cm = confusion_matrix(y_te_outer, preds_outer, labels=[False, True])
+        cm = confusion_matrix(y_te_grouped, preds_grouped, labels=[False, True])
         confusion_matrices.append(cm)
         
         # Determine classification type (TP, FP, FN, TN) for the original test indices
-        N = len(test_outer_idx)
-        y_te_orig = y_te_outer.iloc[:N]
-        preds_orig = preds_outer[:N]
-        preds_series = pd.Series(preds_orig, index=y_te_orig.index, dtype=bool)
-        
-        fold_results = pd.DataFrame(index=y_te_orig.index)
+        fold_results = pd.DataFrame(index=test_outer_idx)
         fold_results["fold"] = i + 1
         
-        classification = pd.Series(index=y_te_orig.index, dtype=str)
-        classification.loc[(y_te_orig == True) & (preds_series == True)] = "TP"
-        classification.loc[(y_te_orig == False) & (preds_series == True)] = "FP"
-        classification.loc[(y_te_orig == True) & (preds_series == False)] = "FN"
-        classification.loc[(y_te_orig == False) & (preds_series == False)] = "TN"
+        classification = pd.Series(index=test_outer_idx, dtype=str)
+        classification.loc[(y_te_grouped == True) & (preds_grouped == True)] = "TP"
+        classification.loc[(y_te_grouped == False) & (preds_grouped == True)] = "FP"
+        classification.loc[(y_te_grouped == True) & (preds_grouped == False)] = "FN"
+        classification.loc[(y_te_grouped == False) & (preds_grouped == False)] = "TN"
         fold_results["classification"] = classification
         results_list.append(fold_results)
         
