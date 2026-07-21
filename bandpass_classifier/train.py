@@ -483,20 +483,25 @@ def run_nested_cv(
     print(f"Mean Outer F2 Score: {np.mean(outer_scores):.4f} +/- {np.std(outer_scores):.4f}")
     
     if confusion_matrices:
-        mean_cm = np.mean(confusion_matrices, axis=0).tolist()
-        std_cm = np.std(confusion_matrices, axis=0).tolist()
-        sem_cm = (np.std(confusion_matrices, axis=0) / np.sqrt(len(confusion_matrices))).tolist()
+        sum_cm = np.sum(confusion_matrices, axis=0).tolist()
+
+        normalized_confusion_matrices = [cm / np.sum(cm) for cm in confusion_matrices]
+        mean_cm = (np.mean(normalized_confusion_matrices, axis=0) * 100).tolist()
+        std_cm = (np.std(normalized_confusion_matrices, axis=0) * 100).tolist()
         
         print("Average Confusion Matrix (Mean +/- Std):")
-        print(f"  Negative (Actual) [TN, FP]: [{mean_cm[0][0]:.2f} +/- {std_cm[0][0]:.2f}, {mean_cm[0][1]:.2f} +/- {std_cm[0][1]:.2f}]")
-        print(f"  Positive (Actual) [FN, TP]: [{mean_cm[1][0]:.2f} +/- {std_cm[1][0]:.2f}, {mean_cm[1][1]:.2f} +/- {std_cm[1][1]:.2f}]")
+        print(f"  Negative (Actual) [TN, FP]: [{mean_cm[0][0]:.4f}% +/- {std_cm[0][0]:.4f}%, {mean_cm[0][1]:.4f}% +/- {std_cm[0][1]:.4f}%]")
+        print(f"  Positive (Actual) [FN, TP]: [{mean_cm[1][0]:.4f}% +/- {std_cm[1][0]:.4f}%, {mean_cm[1][1]:.4f}% +/- {std_cm[1][1]:.4f}%]")
+        
+        print("Total Counts:")
+        print(f"  Negative (Actual) [TN, FP]: [{sum_cm[0][0]}, {sum_cm[0][1]}]")
+        print(f"  Positive (Actual) [FN, TP]: [{sum_cm[1][0]}, {sum_cm[1][1]}]")
         
         cm_path = output_dir / "average_confusion_matrix.json"
         with open(cm_path, "w") as f:
             json.dump({
                 "mean_confusion_matrix": mean_cm,
                 "std_confusion_matrix": std_cm,
-                "sem_confusion_matrix": sem_cm,
                 "label_order": [False, True]
             }, f, indent=4)
             
