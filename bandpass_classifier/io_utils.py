@@ -210,17 +210,29 @@ def get_flagtemplate_dataframe(path: Union[Path, str]) -> pd.DataFrame:
         path = Path(path)
     eb_uid = get_eb_uid_from_filename(path.name)
     rows = []
+    keyval_pattern = re.compile(
+        r"""\b(?P<key>[^=\s]+)=(?P<value>'[^']*?'|"[^"]*?")(?:\s|#.+|$)"""
+    )
+    whitespace_pattern = re.compile(r"\s+")
     with open(path, "r") as f:
         for line in f:
-            stripped_line = line.strip()
-            if not stripped_line or stripped_line.startswith("#"):
-                continue
-            rows.append(
-                {
-                    key: value.strip("'")
-                    for key, value in map(lambda kv: kv.split("="), line.split())
-                }
-            )
+            current_pos = 0
+            row = dict()
+            while current_pos < len(line) and line[current_pos] != "#":
+                # Strip whitespaces if exists
+                ws_result = whitespace_pattern.match(line, current_pos)
+                if ws_result:
+                    current_pos = ws_result.end()
+                    continue
+
+                kv_result = keyval_pattern.match(line, current_pos)
+                if not kv_result or kv_result.start() != current_pos:
+                    raise ValueError(f"Failed to parse {line = }")
+                kv_dict = kv_result.groupdict()
+                row[kv_dict["key"]] = kv_dict["value"][1:-1]
+                current_pos = kv_result.end()
+            if row:
+                rows.append(row)
     returned_df = pd.DataFrame(rows).assign(eb_uid=eb_uid).fillna(pd.NA)
 
     for original_name, replaced_name in [
