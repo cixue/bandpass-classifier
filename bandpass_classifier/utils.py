@@ -1,7 +1,7 @@
 """Utility functions for the bandpass classifier.
 
 This module provides common utilities for caching, category conversion, environment
-variable management, and missing value broadcasting across pandas DataFrames.
+variable management, path resolution, and missing value broadcasting across pandas DataFrames.
 
 Environment Variables:
     BANDPASS_ENABLE_CACHE: Set to '1', 'true', or 'yes' to enable joblib disk caching (default: disabled).
@@ -11,6 +11,7 @@ Environment Variables:
 
 import functools
 import os
+from pathlib import Path
 
 import pandas as pd
 from joblib import Memory
@@ -147,3 +148,25 @@ def broadcast_na(df: pd.DataFrame, indices: pd.DataFrame) -> pd.DataFrame:
             indices.merge(df_subset.drop(columns=missing), how="inner", on=existing)
         )
     return pd.concat(processed)
+
+
+def resolve_path(
+    path: str | os.PathLike, base_dir: str | os.PathLike | None = None
+) -> Path:
+    """Resolves a file or directory path.
+
+    If the provided path is relative and a base directory is given, the path is
+    resolved relative to the base directory. If the path is already absolute,
+    it is returned unchanged as a Path object.
+
+    Args:
+        path: Path string or Path-like object.
+        base_dir: Optional base directory to resolve relative paths against.
+
+    Returns:
+        Path: The resolved Path object.
+    """
+    p = Path(path)
+    if not p.is_absolute() and base_dir is not None:
+        return Path(base_dir) / p
+    return p

@@ -94,7 +94,7 @@ graph TD
 
 Configurations control data inputs, features, hyperparameters, and symmetry strategies. Key sections include:
 
-- `[model]`: Paths to save or load the `model.json` and `column_categories.json`.
+- `[model]`: Paths to save or load the `model.json` and `column_categories.json` (supports relative paths resolved relative to the config file's parent directory).
 - `[features]`: Declares shared features (e.g., `receiver_band`) and individual spectrum features (e.g., NMAD-based scores).
 - `[training.data]`: File glob patterns for input tables/flag templates and the specific anomaly labels/reasons to target.
 - `[training.hyperparameters]`: Parameters passed directly to the XGBoost backend.

@@ -14,7 +14,7 @@ from xgboost import XGBClassifier
 
 from .features.extractor import extract_paired_features, initialize_feature_extractor
 from .io_utils import filter_degenerate_row, get_full_dataframe
-from .utils import convert_to_category, get_env_vars_help_epilog
+from .utils import convert_to_category, get_env_vars_help_epilog, resolve_path
 
 
 def main() -> None:
@@ -48,13 +48,17 @@ def main() -> None:
     initialize_feature_extractor(config)
     all_paired_features = extract_paired_features(bandpass_table_df, config)
 
-    with open(config["model"]["column_categories"], "r") as f:
+    categories_path = resolve_path(
+        config["model"]["column_categories"], args.config.parent
+    )
+    with open(categories_path, "r") as f:
         column_categories = json.load(f)
     for column, categories in column_categories.items():
         convert_to_category(all_paired_features, column, categories)
 
     model = XGBClassifier()
-    model.load_model(config["model"]["path"])
+    model_path = resolve_path(config["model"]["path"], args.config.parent)
+    model.load_model(str(model_path))
 
     prediction = model.predict(all_paired_features)
     prediction = pd.Series(prediction, index=all_paired_features.index, dtype=bool)

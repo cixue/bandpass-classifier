@@ -5,8 +5,8 @@ Placeholder text for model description
 
 # Paths for exporting or importing the model
 [model]
-path = "models/v1/model.json"
-column_categories = "models/v1/column_categories.json"
+path = "model.json"
+column_categories = "column_categories.json"
 
 
 # Model features. There are two types of features:

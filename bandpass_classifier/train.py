@@ -27,7 +27,12 @@ from .io_utils import (
     get_flagtemplate_dataframe,
     get_full_dataframe,
 )
-from .utils import broadcast_na, convert_to_category, get_env_vars_help_epilog
+from .utils import (
+    broadcast_na,
+    convert_to_category,
+    get_env_vars_help_epilog,
+    resolve_path,
+)
 
 
 def get_all_bandpass_table_df(config: dict) -> pd.DataFrame:
@@ -611,11 +616,11 @@ def check_existing_outputs(config: dict, config_dir: Path) -> None:
     """
     existing_items: list[Path] = []
 
-    model_path = Path(config["model"]["path"])
+    model_path = resolve_path(config["model"]["path"], config_dir)
     if model_path.exists():
         existing_items.append(model_path)
 
-    categories_path = Path(config["model"]["column_categories"])
+    categories_path = resolve_path(config["model"]["column_categories"], config_dir)
     if categories_path.exists():
         existing_items.append(categories_path)
 
@@ -662,8 +667,10 @@ def main() -> None:
     with open(args.config, "rb") as f:
         config = tomllib.load(f)
 
+    config_dir = args.config.parent
+
     if not args.overwrite:
-        check_existing_outputs(config, args.config.parent)
+        check_existing_outputs(config, config_dir)
 
     bandpass_table_df = get_all_bandpass_table_df(config)
 
@@ -703,7 +710,6 @@ def main() -> None:
 
     if tuning_enabled:
         # 1. Run nested CV to compute generalized outer loop scores
-        config_dir = args.config.parent
         run_nested_cv(paired_features, label, config, config_dir)
 
         # 2. Find best final hyperparameters on all data
@@ -731,11 +737,11 @@ def main() -> None:
         )
         model = train_model(X_train, y_train, X_test, y_test, config)
 
-    model_path = Path(config["model"]["path"])
+    model_path = resolve_path(config["model"]["path"], config_dir)
     os.makedirs(model_path.parent, exist_ok=True)
     model.save_model(str(model_path))
 
-    categories_path = Path(config["model"]["column_categories"])
+    categories_path = resolve_path(config["model"]["column_categories"], config_dir)
     os.makedirs(categories_path.parent, exist_ok=True)
     with open(categories_path, "w") as f:
         json.dump(column_categories, f)
