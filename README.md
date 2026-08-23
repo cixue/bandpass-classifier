@@ -10,6 +10,8 @@ A machine learning pipeline designed to classify amplitude anomalies in bandpass
 3. [Configuration (`config.toml`)](#configuration-configtoml)
 4. [Feature Extraction Engine](#feature-extraction-engine)
 5. [Getting Started & Usage](#getting-started--usage)
+   - [Installation & Environment Setup](#installation--environment-setup)
+   - [Environment Variables](#environment-variables)
    - [Training the Model](#training-the-model)
    - [Running Predictions](#running-predictions)
 
@@ -125,7 +127,26 @@ conda env create -f environment.yml
 conda activate bandpass_classifier
 ```
 
-Once the environment is activated, commands are executed as Python modules.
+### Environment Variables
+
+The pipeline supports the following environment variables for caching and performance optimization:
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `BANDPASS_ENABLE_CACHE` | `0` (disabled) | Set to `1`, `true`, or `yes` to enable joblib disk caching for computationally intensive feature extractors (e.g. scan statistics). |
+| `BANDPASS_CACHE_DIR` | `.cache` | Directory path where joblib cache artifacts will be stored when caching is enabled. |
+
+#### Examples
+
+```bash
+# Enable joblib disk caching with default location (.cache/)
+BANDPASS_ENABLE_CACHE=1 python -m bandpass_classifier.train --config models/v1/config.toml
+
+# Enable joblib disk caching with a custom directory path
+BANDPASS_ENABLE_CACHE=1 BANDPASS_CACHE_DIR=/path/to/custom_cache python -m bandpass_classifier.predict \
+    --config models/v1/config.toml \
+    --bandpass_table path/to/your/table.solintinf.bcal.tbl
+```
 
 ### Training the Model
 To train the classifier using a specific configuration file:

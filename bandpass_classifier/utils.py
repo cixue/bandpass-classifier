@@ -2,13 +2,39 @@
 
 This module provides common utilities for caching, category conversion, and missing value
 broadcasting across pandas DataFrames.
+
+Environment Variables:
+    BANDPASS_ENABLE_CACHE: Set to '1', 'true', or 'yes' to enable joblib disk caching (default: disabled).
+    BANDPASS_CACHE_DIR: Custom path for the joblib cache directory (default: '.cache').
 """
 
 import functools
+import os
 from typing import Any, List, Optional
 
 from joblib import Memory
 import pandas as pd
+
+_ENABLE_CACHE_ENV_VAR = "BANDPASS_ENABLE_CACHE"
+_CACHE_DIR_ENV_VAR = "BANDPASS_CACHE_DIR"
+
+
+def is_cache_enabled() -> bool:
+    """Checks whether joblib caching is enabled via environment variable.
+
+    Returns:
+        bool: True if caching is enabled via BANDPASS_ENABLE_CACHE, False otherwise (default).
+    """
+    return os.environ.get(_ENABLE_CACHE_ENV_VAR, "").lower() in ("1", "true", "yes")
+
+
+def get_cache_location() -> str:
+    """Gets the directory location for joblib caching.
+
+    Returns:
+        str: The cache directory path specified by BANDPASS_CACHE_DIR, defaulting to '.cache'.
+    """
+    return os.environ.get(_CACHE_DIR_ENV_VAR, ".cache")
 
 
 @functools.cache
@@ -16,9 +42,13 @@ def memory() -> Memory:
     """Gets a cached joblib Memory object for caching computations.
 
     Returns:
-        Memory: A joblib Memory object initialized with a local cache directory.
+        Memory: A joblib Memory object initialized with the cache directory
+            (from BANDPASS_CACHE_DIR or default '.cache') if enabled via BANDPASS_ENABLE_CACHE,
+            or with location=None (default).
     """
-    return Memory(location=".cache", verbose=0)
+    if is_cache_enabled():
+        return Memory(location=get_cache_location(), verbose=0)
+    return Memory(location=None, verbose=0)
 
 
 def convert_to_category(
