@@ -37,4 +37,4 @@ Thumbs.db
 
 # Data, configs, and outputs
 inputs/
-models/
+models/experimental/

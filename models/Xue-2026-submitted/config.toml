@@ -34,14 +34,13 @@ spectrum_features = [
     "score_fixed",
     "segment_width_masked",
     "segment_width_unmasked",
-    "segment_width_fixed",
 ]
 categorical_features = ["receiver_band"]
 paired_level = ["eb_uid", "spw_name_ms", "antenna_name"]
 
 # External data required for extraction of some features
 [features.external_data]
-transmission_path = "inputs/full_spectrum.gzip"
+transmission_path = "/Users/cixue/Software/bandpass-classifier/inputs/full_spectrum.gzip"
 
 
 [prediction]
@@ -49,17 +48,20 @@ transmission_path = "inputs/full_spectrum.gzip"
 # - disabled: use any permutation
 # - loose: only return true (is anomaly) when both permutations return true
 # - strict: return true when any permutation returns true
-symmetric = "disabled"
+symmetric = "strict"
 
 
 # Required for training only
 [training.data]
-bandpass_table_pattern = "inputs/data/*/science_goal.*/group.*/member.*/calibrated/working/*.solintinf.bcal.tbl"
-flagtemplate_pattern = "inputs/data/*/science_goal.*/group.*/member.*/calibration/*.flagtemplate.txt"
+bandpass_table_pattern = "/Users/cixue/Software/bandpass-classifier/inputs/data/*/science_goal.*/group.*/member.*/calibrated_no_DRflags/*.solintinf.bcal.tbl"
+flagtemplate_pattern = "/Users/cixue/Software/bandpass-classifier/inputs/data/*/science_goal.*/group.*/member.*/calibration/*.flagtemplate.txt"
 anomaly_reasons = [
     "QA2:bandpass_amplitude_frequency",
     "QA2:bandpassflag_amplitude_frequency",
-    # "QA2:bandpass_amplitude_time",
+    "QA2:bandpass_amplitude_time",
+    "QA2:bandpass_amplitude_frequency_added",
+    "QA2:bandpassflag_amplitude_frequency_added",
+    "QA2:bandpass_amplitude_time_added",
 ]
 
 [training.hyperparameters]
@@ -76,15 +78,12 @@ eval_metric = "aucpr"
 # - ["eb_uid", "spw_name_ms", "antenna_name"]
 #     - data of same eb_uid could belong to different dataset as long as their
 #       spw_name_ms or antenna_name are different
-data_aggregation_level = ["eb_uid", "spw_name_ms", "antenna_name"]
+data_aggregation_level = ["eb_uid"]
 # If enabled, training dataset are duplicated to include both spectrum pair
 # permutations to ensure symmetric model.
 symmetric = true
 weight_factor = 1.0
-
-
-[training.evaluation]
-symmetric = true
+random_state = 23
 
 [training.tuning]
 enabled = true
@@ -93,9 +92,10 @@ outer_folds = 5
 inner_folds = 5
 
 [training.tuning.grid_search_space]
-max_depth = [5, 7]
-learning_rate = [0.05, 0.1]
-n_estimators = [100, 200]
+max_depth = [3, 5, 7]
+learning_rate = [0.05, 0.1, 0.5]
+n_estimators = [100, 200, 500, 1000]
+subsample = [0.5, 0.8, 1.0]
 
 [training.tuning.optuna_space]
 n_trials = 10
