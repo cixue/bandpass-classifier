@@ -550,6 +550,40 @@ def load_and_prepare_labels(
     return all_label
 
 
+def check_existing_outputs(config: dict, config_dir: Path) -> None:
+    """Checks whether training outputs would overwrite existing files or directories.
+
+    Args:
+        config: The model configuration dictionary.
+        config_dir: Directory containing the configuration file.
+
+    Raises:
+        FileExistsError: If any output file or directory already exists.
+    """
+    existing_items: List[Path] = []
+
+    model_path = Path(config["model"]["path"])
+    if model_path.exists():
+        existing_items.append(model_path)
+
+    categories_path = Path(config["model"]["column_categories"])
+    if categories_path.exists():
+        existing_items.append(categories_path)
+
+    tuning_config = config.get("training", {}).get("tuning", {})
+    if tuning_config.get("enabled", False):
+        intermediate_dir = config_dir / "intermediate_output"
+        if intermediate_dir.exists() and any(intermediate_dir.iterdir()):
+            existing_items.append(intermediate_dir)
+
+    if existing_items:
+        items_str = "\n".join(f"  - {p}" for p in existing_items)
+        raise FileExistsError(
+            f"Output file(s) or directory already exist:\n{items_str}\n"
+            "Use '--overwrite' to allow overwriting existing outputs."
+        )
+
+
 def main() -> None:
     """Main training execution block.
 
@@ -569,10 +603,18 @@ def main() -> None:
         type=float,
         help="Sample fraction (if < 1.0) or count of rows (if >= 1.0) of input data.",
     )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing output files and directories if they already exist.",
+    )
     args = parser.parse_args()
 
     with open(args.config, "rb") as f:
         config = tomllib.load(f)
+
+    if not args.overwrite:
+        check_existing_outputs(config, args.config.parent)
 
     bandpass_table_df = get_all_bandpass_table_df(config)
 
@@ -628,8 +670,13 @@ def main() -> None:
         )
         model = train_model(X_train, y_train, X_test, y_test, config)
 
-    model.save_model(config["model"]["path"])
-    with open(config["model"]["column_categories"], "w") as f:
+    model_path = Path(config["model"]["path"])
+    os.makedirs(model_path.parent, exist_ok=True)
+    model.save_model(str(model_path))
+
+    categories_path = Path(config["model"]["column_categories"])
+    os.makedirs(categories_path.parent, exist_ok=True)
+    with open(categories_path, "w") as f:
         json.dump(column_categories, f)
 
 

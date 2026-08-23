@@ -157,6 +157,10 @@ To train the classifier using a specific configuration file:
 ```bash
 python -m bandpass_classifier.train --config models/v1/config.toml
 ```
+To overwrite existing model artifacts and intermediate outputs:
+```bash
+python -m bandpass_classifier.train --config models/v1/config.toml --overwrite
+```
 To run a fast test or train on a subset of the dataset:
 ```bash
 python -m bandpass_classifier.train --config models/v1/config.toml --sample 1000
