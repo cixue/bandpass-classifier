@@ -38,6 +38,12 @@ def main() -> None:
         required=True,
         help="Bandpass table to be predicted.",
     )
+    parser.add_argument(
+        "--output_prediction_path",
+        type=Path,
+        required=True,
+        help="Path to output the prediction as a CSV format.",
+    )
     args = parser.parse_args()
 
     with open(args.config, "rb") as f:
@@ -65,8 +71,11 @@ def main() -> None:
     model.load_model(str(model_path))
 
     prediction = model.predict(all_paired_features)
-    prediction = pd.Series(prediction, index=all_paired_features.index, dtype=bool)
+    prediction = pd.Series(
+        prediction, index=all_paired_features.index, dtype=bool, name="Prediction"
+    )
 
+    prediction.to_frame().to_csv(args.output_prediction_path)
     print(all_paired_features[prediction])
 
 
