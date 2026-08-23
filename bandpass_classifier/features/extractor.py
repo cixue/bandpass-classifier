@@ -5,7 +5,6 @@ calculates feature dependency graphs, and runs extraction pipelines in parallel.
 It also provides initializer and wrapper functions to extract paired features.
 """
 
-import os
 from functools import partial
 from graphlib import CycleError, TopologicalSorter
 from typing import Any, Callable, Dict, List, Optional, Set
@@ -14,9 +13,9 @@ import numpy as np
 import pandas as pd
 from tqdm.contrib.concurrent import process_map
 
-__all__ = ["Extractor"]
+from ..utils import get_max_workers
 
-_MAX_WORKERS_ENV_VAR = "BANDPASS_MAX_WORKERS"
+__all__ = ["Extractor"]
 
 
 class Extractor:
@@ -119,9 +118,7 @@ class Extractor:
             CycleError: If a cyclic dependency is detected among the features.
         """
         if max_workers is None:
-            env_workers = os.environ.get(_MAX_WORKERS_ENV_VAR)
-            if env_workers is not None and env_workers.isdigit():
-                max_workers = int(env_workers)
+            max_workers = get_max_workers()
 
         # Make a copy to prevent modifying input
         requested_features = set(features)

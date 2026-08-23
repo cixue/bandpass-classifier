@@ -14,7 +14,7 @@ from xgboost import XGBClassifier
 
 from .features.extractor import extract_paired_features, initialize_feature_extractor
 from .io_utils import get_full_dataframe, filter_degenerate_row
-from .utils import convert_to_category
+from .utils import convert_to_category, get_env_vars_help_epilog
 
 
 def main() -> None:
@@ -24,7 +24,11 @@ def main() -> None:
     features, extracts paired features, maps categories, loads the model,
     and runs predictions.
     """
-    parser = argparse.ArgumentParser("Bandpass Amplitude Anomaly Classifier")
+    parser = argparse.ArgumentParser(
+        "Bandpass Amplitude Anomaly Classifier",
+        epilog=get_env_vars_help_epilog(),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument(
         "--config", type=Path, required=True, help="TOML model config file."
     )

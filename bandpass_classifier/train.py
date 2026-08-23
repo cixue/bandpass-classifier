@@ -23,7 +23,7 @@ from xgboost import XGBClassifier
 
 from .features.extractor import extract_paired_features, initialize_feature_extractor
 from .io_utils import get_flagtemplate_dataframe, get_full_dataframe, filter_degenerate_row
-from .utils import broadcast_na, convert_to_category
+from .utils import broadcast_na, convert_to_category, get_env_vars_help_epilog
 
 
 def get_all_bandpass_table_df(config: dict) -> pd.DataFrame:
@@ -556,7 +556,11 @@ def main() -> None:
     Parses CLI args, loads dataset, extracts features, performs splits, prepares data,
     trains the classifier, and saves output model/metadata artifacts.
     """
-    parser = argparse.ArgumentParser("Bandpass Amplitude Anomaly Classifier")
+    parser = argparse.ArgumentParser(
+        "Bandpass Amplitude Anomaly Classifier",
+        epilog=get_env_vars_help_epilog(),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument(
         "--config", type=Path, required=True, help="TOML model config file."
     )

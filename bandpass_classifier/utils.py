@@ -1,22 +1,35 @@
 """Utility functions for the bandpass classifier.
 
-This module provides common utilities for caching, category conversion, and missing value
-broadcasting across pandas DataFrames.
+This module provides common utilities for caching, category conversion, environment
+variable management, and missing value broadcasting across pandas DataFrames.
 
 Environment Variables:
     BANDPASS_ENABLE_CACHE: Set to '1', 'true', or 'yes' to enable joblib disk caching (default: disabled).
     BANDPASS_CACHE_DIR: Custom path for the joblib cache directory (default: '.cache').
+    BANDPASS_MAX_WORKERS: Maximum worker process count for parallel feature extraction (default: auto/all cores).
 """
 
 import functools
 import os
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from joblib import Memory
 import pandas as pd
 
-_ENABLE_CACHE_ENV_VAR = "BANDPASS_ENABLE_CACHE"
-_CACHE_DIR_ENV_VAR = "BANDPASS_CACHE_DIR"
+ENV_VARS: Dict[str, Dict[str, str]] = {
+    "BANDPASS_ENABLE_CACHE": {
+        "description": "Enable joblib disk caching for computationally intensive feature extractors.",
+        "default": "0 (disabled)",
+    },
+    "BANDPASS_CACHE_DIR": {
+        "description": "Directory path where joblib cache artifacts will be stored when caching is enabled.",
+        "default": ".cache",
+    },
+    "BANDPASS_MAX_WORKERS": {
+        "description": "Number of worker processes to use for parallel feature extraction in process_map.",
+        "default": "None (auto/all cores)",
+    },
+}
 
 
 def is_cache_enabled() -> bool:
@@ -25,7 +38,7 @@ def is_cache_enabled() -> bool:
     Returns:
         bool: True if caching is enabled via BANDPASS_ENABLE_CACHE, False otherwise (default).
     """
-    return os.environ.get(_ENABLE_CACHE_ENV_VAR, "").lower() in ("1", "true", "yes")
+    return os.environ.get("BANDPASS_ENABLE_CACHE", "").lower() in ("1", "true", "yes")
 
 
 def get_cache_location() -> str:
@@ -34,7 +47,33 @@ def get_cache_location() -> str:
     Returns:
         str: The cache directory path specified by BANDPASS_CACHE_DIR, defaulting to '.cache'.
     """
-    return os.environ.get(_CACHE_DIR_ENV_VAR, ".cache")
+    return os.environ.get("BANDPASS_CACHE_DIR", ENV_VARS["BANDPASS_CACHE_DIR"]["default"])
+
+
+def get_max_workers() -> Optional[int]:
+    """Gets the configured maximum worker count for parallel processing.
+
+    Returns:
+        Optional[int]: The integer worker count from BANDPASS_MAX_WORKERS, or None if unset/invalid.
+    """
+    val = os.environ.get("BANDPASS_MAX_WORKERS")
+    if val is not None and val.isdigit():
+        return int(val)
+    return None
+
+
+def get_env_vars_help_epilog() -> str:
+    """Generates formatted help text describing supported environment variables.
+
+    Returns:
+        str: Formatted epilog string suitable for argparse help outputs.
+    """
+    lines = ["environment variables:"]
+    for name, meta in ENV_VARS.items():
+        desc = meta["description"]
+        default = meta["default"]
+        lines.append(f"  {name:<24} {desc} (default: {default})")
+    return "\n".join(lines)
 
 
 @functools.cache
