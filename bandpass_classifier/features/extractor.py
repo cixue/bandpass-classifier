@@ -5,6 +5,7 @@ calculates feature dependency graphs, and runs extraction pipelines in parallel.
 It also provides initializer and wrapper functions to extract paired features.
 """
 
+import os
 from functools import partial
 from graphlib import CycleError, TopologicalSorter
 from typing import Any, Callable, Dict, List, Optional, Set
@@ -14,6 +15,8 @@ import pandas as pd
 from tqdm.contrib.concurrent import process_map
 
 __all__ = ["Extractor"]
+
+_MAX_WORKERS_ENV_VAR = "BANDPASS_MAX_WORKERS"
 
 
 class Extractor:
@@ -104,7 +107,9 @@ class Extractor:
             df: Input DataFrame.
             features: List of feature names to extract.
             chunk_size: Number of rows per parallel processing chunk.
-            max_workers: The maximum number of worker processes.
+            max_workers: The maximum number of worker processes. If None, checks
+                the BANDPASS_MAX_WORKERS environment variable before falling back
+                to the default multiprocessing pool size.
 
         Returns:
             pd.DataFrame: A DataFrame containing the requested features.
@@ -113,6 +118,11 @@ class Extractor:
             ValueError: If dependencies or external data dependencies cannot be resolved.
             CycleError: If a cyclic dependency is detected among the features.
         """
+        if max_workers is None:
+            env_workers = os.environ.get(_MAX_WORKERS_ENV_VAR)
+            if env_workers is not None and env_workers.isdigit():
+                max_workers = int(env_workers)
+
         # Make a copy to prevent modifying input
         requested_features = set(features)
         required_external_data: Set[str] = set()
