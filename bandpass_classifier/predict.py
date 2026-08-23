@@ -7,13 +7,13 @@ to identify potential amplitude anomalies.
 import argparse
 import json
 from pathlib import Path
-import tomllib
 
 import pandas as pd
+import tomllib
 from xgboost import XGBClassifier
 
 from .features.extractor import extract_paired_features, initialize_feature_extractor
-from .io_utils import get_full_dataframe, filter_degenerate_row
+from .io_utils import filter_degenerate_row, get_full_dataframe
 from .utils import convert_to_category, get_env_vars_help_epilog
 
 
@@ -64,4 +64,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

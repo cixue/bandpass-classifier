@@ -5,11 +5,11 @@ calculates feature dependency graphs, and runs extraction pipelines in parallel.
 It also provides initializer and wrapper functions to extract paired features.
 """
 
+from collections.abc import Callable
 from functools import partial
 from graphlib import CycleError, TopologicalSorter
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any
 
-import numpy as np
 import pandas as pd
 from tqdm.contrib.concurrent import process_map
 
@@ -30,15 +30,15 @@ class Extractor:
             needed by extractor functions.
     """
 
-    _registry: Dict[str, Dict[str, Any]] = {}
-    _external_data_repository: Dict[str, Any] = {}
+    _registry: dict[str, dict[str, Any]] = {}
+    _external_data_repository: dict[str, Any] = {}
 
     @classmethod
     def register(
         cls,
-        name: Optional[str] = None,
-        deps: Optional[List[str]] = None,
-        external_data: Optional[List[str]] = None,
+        name: str | None = None,
+        deps: list[str] | None = None,
+        external_data: list[str] | None = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         """Decorator to register a feature extraction function.
 
@@ -93,9 +93,9 @@ class Extractor:
         cls,
         df: pd.DataFrame,
         *,
-        features: List[str],
+        features: list[str],
         chunk_size: int = 16,
-        max_workers: Optional[int] = None,
+        max_workers: int | None = None,
     ) -> pd.DataFrame:
         """Extracts specified features from the input DataFrame.
 
@@ -122,10 +122,10 @@ class Extractor:
 
         # Make a copy to prevent modifying input
         requested_features = set(features)
-        required_external_data: Set[str] = set()
+        required_external_data: set[str] = set()
 
-        required_features: Set[str] = set()
-        derived_features: Set[str] = set()
+        required_features: set[str] = set()
+        derived_features: set[str] = set()
         while requested_features:
             feature = requested_features.pop()
             if feature not in cls._registry:
@@ -184,10 +184,10 @@ class Extractor:
     def _process_chunk(
         chunk: pd.DataFrame,
         *,
-        required_features: Set[str],
-        extraction_order: List[str],
-        registry: Dict[str, Dict[str, Any]],
-        external_data_repository: Dict[str, Any],
+        required_features: set[str],
+        extraction_order: list[str],
+        registry: dict[str, dict[str, Any]],
+        external_data_repository: dict[str, Any],
     ) -> pd.DataFrame:
         """Processes a single DataFrame chunk by calculating features in extraction order.
 
@@ -254,9 +254,9 @@ def extract_paired_features(
 
 def get_paired_features(
     features: pd.DataFrame,
-    level: List[str],
-    shared_features_list: List[str],
-    spectrum_features_list: List[str],
+    level: list[str],
+    shared_features_list: list[str],
+    spectrum_features_list: list[str],
 ) -> pd.DataFrame:
     """Groups features and combines spectrum pairs side-by-side.
 
@@ -279,7 +279,9 @@ def get_paired_features(
         features[shared_features_list].groupby(features.index.names).first()
     )
     spectrum_features = features[spectrum_features_list]
-    spectrum_features = spectrum_features.groupby(level).filter(lambda x: len(x) == 2).copy()
+    spectrum_features = (
+        spectrum_features.groupby(level).filter(lambda x: len(x) == 2).copy()
+    )
     spectrum_features["_row_number_"] = spectrum_features.groupby(
         spectrum_features.index.names
     ).cumcount()

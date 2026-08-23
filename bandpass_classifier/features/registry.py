@@ -7,6 +7,5 @@ To add a new feature set, implement the related feature construction process in 
 separate module and import it here.
 """
 
-from . import basic_features
-from .scan_statistics import features
-
+from . import basic_features  # noqa: F401
+from .scan_statistics import features  # noqa: F401

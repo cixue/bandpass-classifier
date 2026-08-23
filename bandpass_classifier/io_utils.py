@@ -5,9 +5,9 @@ extracting MeasurementSet/Execution Block UIDs, and parsing calibration
 flagtemplate files.
 """
 
-from pathlib import Path
 import re
-from typing import List, Literal, overload, Tuple, Union
+from pathlib import Path
+from typing import Literal, overload
 
 # Note: casaconfig configuration must happen prior to importing casatools.table
 # to properly suppress logs and auto-updates.
@@ -17,9 +17,9 @@ config.logfile = None  # type: ignore # Suppress casa log file generation
 config.data_auto_update = False  # type: ignore # Do not check for updates
 config.measures_auto_update = False  # type: ignore
 
-from casatools import table
 import numpy as np
 import pandas as pd
+from casatools import table
 
 pd.options.future.infer_string = True
 
@@ -48,34 +48,31 @@ def get_eb_uid_from_filename(
 
 @overload
 def get_partial_dataframe(
-    path: Union[Path, str],
-    columns: List[str],
+    path: Path | str,
+    columns: list[str],
     include_eb_uid: Literal[False] = False,
-) -> pd.DataFrame:
-    ...
+) -> pd.DataFrame: ...
 
 
 @overload
 def get_partial_dataframe(
-    path: Union[Path, str],
-    columns: List[str],
+    path: Path | str,
+    columns: list[str],
     include_eb_uid: Literal[True],
-) -> Tuple[str, pd.DataFrame]:
-    ...
+) -> tuple[str, pd.DataFrame]: ...
 
 
 @overload
 def get_partial_dataframe(
-    path: Union[Path, str],
-    columns: List[str],
+    path: Path | str,
+    columns: list[str],
     include_eb_uid: bool,
-) -> Union[pd.DataFrame, Tuple[str, pd.DataFrame]]:
-    ...
+) -> pd.DataFrame | tuple[str, pd.DataFrame]: ...
 
 
 def get_partial_dataframe(
-    path: Union[Path, str], columns: List[str], include_eb_uid: bool = False
-) -> Union[pd.DataFrame, Tuple[str, pd.DataFrame]]:
+    path: Path | str, columns: list[str], include_eb_uid: bool = False
+) -> pd.DataFrame | tuple[str, pd.DataFrame]:
     """Loads specified columns from a CASA table into a pandas DataFrame.
 
     Args:
@@ -101,7 +98,7 @@ def get_partial_dataframe(
         tb.close()
 
 
-def get_full_dataframe(path: Union[Path, str]) -> pd.DataFrame:
+def get_full_dataframe(path: Path | str) -> pd.DataFrame:
     """Loads and compiles full bandpass calibration data from a table path.
 
     Merges bandpass data, spectral window configuration, and antenna details.
@@ -194,7 +191,7 @@ def filter_degenerate_row(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def get_flagtemplate_dataframe(path: Union[Path, str]) -> pd.DataFrame:
+def get_flagtemplate_dataframe(path: Path | str) -> pd.DataFrame:
     """Parses a CASA flagtemplate file into a pandas DataFrame.
 
     Converts flag commands into structured rows and indexes them.

@@ -11,12 +11,11 @@ Environment Variables:
 
 import functools
 import os
-from typing import Any, Dict, List, Optional
 
-from joblib import Memory
 import pandas as pd
+from joblib import Memory
 
-ENV_VARS: Dict[str, Dict[str, str]] = {
+ENV_VARS: dict[str, dict[str, str]] = {
     "BANDPASS_ENABLE_CACHE": {
         "description": "Enable joblib disk caching for computationally intensive feature extractors.",
         "default": "0 (disabled)",
@@ -47,10 +46,12 @@ def get_cache_location() -> str:
     Returns:
         str: The cache directory path specified by BANDPASS_CACHE_DIR, defaulting to '.cache'.
     """
-    return os.environ.get("BANDPASS_CACHE_DIR", ENV_VARS["BANDPASS_CACHE_DIR"]["default"])
+    return os.environ.get(
+        "BANDPASS_CACHE_DIR", ENV_VARS["BANDPASS_CACHE_DIR"]["default"]
+    )
 
 
-def get_max_workers() -> Optional[int]:
+def get_max_workers() -> int | None:
     """Gets the configured maximum worker count for parallel processing.
 
     Returns:
@@ -91,8 +92,8 @@ def memory() -> Memory:
 
 
 def convert_to_category(
-    df: pd.DataFrame, column: str, categories: Optional[List[str]] = None
-) -> Optional[List[str]]:
+    df: pd.DataFrame, column: str, categories: list[str] | None = None
+) -> list[str] | None:
     """Converts a DataFrame column to a categorical code representation.
 
     If categories are provided, they are set as the categories for the column.
@@ -137,7 +138,7 @@ def broadcast_na(df: pd.DataFrame, indices: pd.DataFrame) -> pd.DataFrame:
     processed = []
     na_patterns = pd.Series(
         list(df[indices.columns].isna().itertuples(index=False, name=None)),
-        index=df.index
+        index=df.index,
     )
     for column_isna, df_subset in df.groupby(na_patterns):
         existing = [key for isna, key in zip(column_isna, indices.columns) if not isna]
@@ -146,4 +147,3 @@ def broadcast_na(df: pd.DataFrame, indices: pd.DataFrame) -> pd.DataFrame:
             indices.merge(df_subset.drop(columns=missing), how="inner", on=existing)
         )
     return pd.concat(processed)
-

@@ -11,18 +11,22 @@ import itertools
 import json
 import os
 from pathlib import Path
-import tomllib
-from typing import cast, Dict, List, Optional, Tuple
+from typing import cast
 
 import numpy as np
 import optuna
 import pandas as pd
-from sklearn.model_selection import train_test_split, StratifiedKFold, KFold
-from sklearn.metrics import fbeta_score, confusion_matrix
+import tomllib
+from sklearn.metrics import confusion_matrix, fbeta_score
+from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
 from xgboost import XGBClassifier
 
 from .features.extractor import extract_paired_features, initialize_feature_extractor
-from .io_utils import get_flagtemplate_dataframe, get_full_dataframe, filter_degenerate_row
+from .io_utils import (
+    filter_degenerate_row,
+    get_flagtemplate_dataframe,
+    get_full_dataframe,
+)
 from .utils import broadcast_na, convert_to_category, get_env_vars_help_epilog
 
 
@@ -66,7 +70,7 @@ def get_full_indices(
         .loc[indices]
         .reset_index()
         .set_index(full_indices.names)
-        .index
+        .index,
     )
 
 
@@ -74,7 +78,7 @@ def split_indices(
     paired_features: pd.DataFrame,
     label: pd.Series,
     config: dict,
-) -> Tuple[pd.MultiIndex, pd.MultiIndex]:
+) -> tuple[pd.MultiIndex, pd.MultiIndex]:
     """Splits MultiIndex into training and test indices based on aggregated data level.
 
     Args:
@@ -112,7 +116,7 @@ def extract_data(
     label: pd.Series,
     indices: pd.MultiIndex,
     symmetric: bool,
-) -> Tuple[pd.DataFrame, pd.Series]:
+) -> tuple[pd.DataFrame, pd.Series]:
     """Extracts features and labels for given indices, optionally applying symmetry.
 
     Symmetry swaps corresponding paired columns (ending in '_0' and '_1') to augment
@@ -154,8 +158,8 @@ def prepare_data(
     train_indices: pd.MultiIndex,
     test_indices: pd.MultiIndex,
     config: dict,
-) -> Tuple[
-    Dict[str, Optional[List[str]]],
+) -> tuple[
+    dict[str, list[str] | None],
     pd.DataFrame,
     pd.Series,
     pd.DataFrame,
@@ -213,7 +217,7 @@ def train_model(
     X_val: pd.DataFrame,
     y_val: pd.Series,
     config: dict,
-    hyperparameter_updates: Optional[dict] = None,
+    hyperparameter_updates: dict | None = None,
 ) -> XGBClassifier:
     """Trains an XGBClassifier using configured parameters and optional updates.
 
@@ -247,7 +251,7 @@ def train_model(
         tree_method="hist",  # Required for categorical support
         enable_categorical=True,  # Tells XGB to handle categories automatically
         scale_pos_weight=scale_pos_weight,  # Gives more weight to the minority class
-        **model_params
+        **model_params,
     )
 
     model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
@@ -264,65 +268,86 @@ def get_group_stratified_folds(
     label: pd.Series,
     config: dict,
     n_splits: int,
-    random_state: Optional[int] = None
+    random_state: int | None = None,
 ):
     """Generates group-stratified splits on paired_features MultiIndex."""
     group_cols = config["training"]["strategy"]["data_aggregation_level"]
     label_aggregated_level = label.groupby(group_cols).apply(any)
-    
+
     actual_splits = min(n_splits, len(label_aggregated_level))
     if actual_splits < 2:
         # Fallback: if we only have 0 or 1 groups, return a single fold using the whole set
-        yield cast(pd.MultiIndex, paired_features.index), cast(pd.MultiIndex, paired_features.index)
+        yield (
+            cast(pd.MultiIndex, paired_features.index),
+            cast(pd.MultiIndex, paired_features.index),
+        )
         return
-        
+
     try:
-        skf = StratifiedKFold(n_splits=actual_splits, shuffle=True, random_state=random_state)
-        splits = list(skf.split(label_aggregated_level.index.to_frame(index=False), label_aggregated_level))
+        skf = StratifiedKFold(
+            n_splits=actual_splits, shuffle=True, random_state=random_state
+        )
+        splits = list(
+            skf.split(
+                label_aggregated_level.index.to_frame(index=False),
+                label_aggregated_level,
+            )
+        )
     except Exception:
         kf = KFold(n_splits=actual_splits, shuffle=True, random_state=random_state)
         splits = list(kf.split(label_aggregated_level.index.to_frame(index=False)))
-        
-    for train_group_idx, val_group_idx in splits:
-        train_groups = label_aggregated_level.index[train_group_idx].to_frame(index=False)
-        val_groups = label_aggregated_level.index[val_group_idx].to_frame(index=False)
-        
-        train_fold_indices = get_full_indices(cast(pd.MultiIndex, paired_features.index), train_groups)
-        val_fold_indices = get_full_indices(cast(pd.MultiIndex, paired_features.index), val_groups)
-        
-        yield train_fold_indices, val_fold_indices
 
+    for train_group_idx, val_group_idx in splits:
+        train_groups = label_aggregated_level.index[train_group_idx].to_frame(
+            index=False
+        )
+        val_groups = label_aggregated_level.index[val_group_idx].to_frame(index=False)
+
+        train_fold_indices = get_full_indices(
+            cast(pd.MultiIndex, paired_features.index), train_groups
+        )
+        val_fold_indices = get_full_indices(
+            cast(pd.MultiIndex, paired_features.index), val_groups
+        )
+
+        yield train_fold_indices, val_fold_indices
 
 
 def tune_hyperparameters(
     paired_features: pd.DataFrame,
     label: pd.Series,
     train_indices: pd.MultiIndex,
-    config: dict
+    config: dict,
 ) -> dict:
     """Finds the best hyperparameters for the given training indices using CV."""
     tuning_config = config["training"]["tuning"]
     method = tuning_config.get("method", "grid_search")
     n_splits = tuning_config.get("inner_folds", 5)
     random_state = config["training"]["strategy"].get("random_state")
-    
+
     subset_features = paired_features.loc[train_indices]
     assert isinstance(subset_features, pd.DataFrame)
     subset_label = label.loc[train_indices]
-    
-    inner_folds_indices = list(get_group_stratified_folds(
-        subset_features, subset_label, config, n_splits=n_splits, random_state=random_state
-    ))
-    
+
+    inner_folds_indices = list(
+        get_group_stratified_folds(
+            subset_features,
+            subset_label,
+            config,
+            n_splits=n_splits,
+            random_state=random_state,
+        )
+    )
+
     if method == "grid_search":
         space = tuning_config.get("grid_search_space", {})
         keys = list(space.keys())
         values = [space[k] for k in keys]
         candidates = [dict(zip(keys, combo)) for combo in itertools.product(*values)]
-        
+
         best_score = -1.0
         best_params = {}
-        
+
         for params in candidates:
             scores = []
             for train_fold_idx, val_fold_idx in inner_folds_indices:
@@ -333,21 +358,23 @@ def tune_hyperparameters(
                 preds = model.predict(X_val)
                 score = compute_f2_score(y_val, preds)
                 scores.append(score)
-                
+
             mean_score = np.mean(scores)
             if mean_score > best_score:
                 best_score = mean_score
                 best_params = params
-                
-        print(f"GridSearch best inner score: {best_score:.4f} with params: {best_params}")
+
+        print(
+            f"GridSearch best inner score: {best_score:.4f} with params: {best_params}"
+        )
         return best_params
 
     elif method == "optuna":
         space = tuning_config.get("optuna_space", {})
         n_trials = space.get("n_trials", 10)
-        
+
         optuna.logging.set_verbosity(optuna.logging.WARNING)
-        
+
         def objective(trial):
             params = {}
             for k, bounds in space.items():
@@ -360,7 +387,7 @@ def tune_hyperparameters(
                         params[k] = trial.suggest_float(k, bounds[0], bounds[1])
                 else:
                     params[k] = trial.suggest_categorical(k, bounds)
-                    
+
             scores = []
             for train_fold_idx, val_fold_idx in inner_folds_indices:
                 _, X_tr, y_tr, X_val, y_val = prepare_data(
@@ -370,12 +397,14 @@ def tune_hyperparameters(
                 preds = model.predict(X_val)
                 score = compute_f2_score(y_val, preds)
                 scores.append(score)
-                
+
             return np.mean(scores)
-            
+
         study = optuna.create_study(direction="maximize")
         study.optimize(objective, n_trials=n_trials)
-        print(f"Optuna best inner score: {study.best_value:.4f} with params: {study.best_params}")
+        print(
+            f"Optuna best inner score: {study.best_value:.4f} with params: {study.best_params}"
+        )
         return study.best_params
 
     else:
@@ -383,45 +412,51 @@ def tune_hyperparameters(
 
 
 def run_nested_cv(
-    paired_features: pd.DataFrame,
-    label: pd.Series,
-    config: dict,
-    config_dir: Path
-) -> List[float]:
+    paired_features: pd.DataFrame, label: pd.Series, config: dict, config_dir: Path
+) -> list[float]:
     """Runs nested cross validation and returns outer fold test F2 scores."""
     tuning_config = config["training"]["tuning"]
     outer_folds = tuning_config.get("outer_folds", 5)
     random_state = config["training"]["strategy"].get("random_state")
 
-    
     print(f"Running nested CV with {outer_folds} outer folds...")
-    
+
     output_dir = config_dir / "intermediate_output"
     os.makedirs(output_dir, exist_ok=True)
-    
-    outer_folds_indices = list(get_group_stratified_folds(
-        paired_features, label, config, n_splits=outer_folds, random_state=random_state
-    ))
-    
+
+    outer_folds_indices = list(
+        get_group_stratified_folds(
+            paired_features,
+            label,
+            config,
+            n_splits=outer_folds,
+            random_state=random_state,
+        )
+    )
+
     outer_scores = []
     confusion_matrices = []
     results_list = []
-    
+
     for i, (train_outer_idx, test_outer_idx) in enumerate(outer_folds_indices):
-        print(f"--- Outer Fold {i+1}/{outer_folds} ---")
-        
+        print(f"--- Outer Fold {i + 1}/{outer_folds} ---")
+
         best_params = tune_hyperparameters(
             paired_features, label, train_outer_idx, config
         )
-        
+
         _, X_tr_outer, y_tr_outer, X_te_outer, y_te_outer = prepare_data(
             paired_features, label, train_outer_idx, test_outer_idx, config
         )
-        model = train_model(X_tr_outer, y_tr_outer, X_te_outer, y_te_outer, config, best_params)
-        
+        model = train_model(
+            X_tr_outer, y_tr_outer, X_te_outer, y_te_outer, config, best_params
+        )
+
         # Convert predictions to a Series indexed identically to y_te_outer
-        preds_outer_series = pd.Series(model.predict(X_te_outer), index=y_te_outer.index, dtype=bool)
-        
+        preds_outer_series = pd.Series(
+            model.predict(X_te_outer), index=y_te_outer.index, dtype=bool
+        )
+
         # Group and aggregate based on prediction.symmetric configuration
         symmetric_mode = config["prediction"].get("symmetric", "disabled")
         if symmetric_mode == "loose":
@@ -430,25 +465,25 @@ def run_nested_cv(
             preds_grouped = preds_outer_series.groupby(preds_outer_series.index).any()
         else:
             preds_grouped = preds_outer_series.groupby(preds_outer_series.index).first()
-            
+
         y_te_grouped = y_te_outer.groupby(y_te_outer.index).first()
-        
+
         # Reindex to match the original test index exactly (ensuring same ordering)
         preds_grouped = preds_grouped.reindex(test_outer_idx)
         y_te_grouped = y_te_grouped.reindex(test_outer_idx)
-        
+
         score_outer = compute_f2_score(y_te_grouped, preds_grouped)
-        print(f"Outer Fold {i+1} Test F2 Score: {score_outer:.4f}")
+        print(f"Outer Fold {i + 1} Test F2 Score: {score_outer:.4f}")
         outer_scores.append(score_outer)
-        
+
         # Calculate confusion matrix for this fold
         cm = confusion_matrix(y_te_grouped, preds_grouped, labels=[False, True])
         confusion_matrices.append(cm)
-        
+
         # Determine classification type (TP, FP, FN, TN) for the original test indices
         fold_results = pd.DataFrame(index=test_outer_idx)
         fold_results["fold"] = i + 1
-        
+
         classification = pd.Series(index=test_outer_idx, dtype=str)
         classification.loc[(y_te_grouped == True) & (preds_grouped == True)] = "TP"
         classification.loc[(y_te_grouped == False) & (preds_grouped == True)] = "FP"
@@ -456,62 +491,76 @@ def run_nested_cv(
         classification.loc[(y_te_grouped == False) & (preds_grouped == False)] = "TN"
         fold_results["classification"] = classification
         results_list.append(fold_results)
-        
+
         # Save intermediate output for the outer loop fold in a subdirectory
-        fold_dir = output_dir / f"fold_{i+1}"
+        fold_dir = output_dir / f"fold_{i + 1}"
         os.makedirs(fold_dir, exist_ok=True)
-        
+
         hyp_path = fold_dir / "hyperparameters.json"
         with open(hyp_path, "w") as f:
             json.dump(best_params, f, indent=4)
-            
+
         model_path = fold_dir / "model.json"
         model.save_model(str(model_path))
-        
+
         indices_path = fold_dir / "test_indices.parquet"
         test_indices_df = test_outer_idx.to_frame(index=False)
         test_indices_df.to_parquet(indices_path)
-        
+
     if results_list:
         all_results_df = pd.concat(results_list).reset_index()
-        columns_to_keep = ["eb_uid", "spw_name_ms", "antenna_name", "fold", "classification"]
+        columns_to_keep = [
+            "eb_uid",
+            "spw_name_ms",
+            "antenna_name",
+            "fold",
+            "classification",
+        ]
         all_results_df = all_results_df[columns_to_keep]
         csv_path = output_dir / "testing_results.csv"
         all_results_df.to_csv(csv_path, index=False)
-        
+
     print(f"Nested CV completed. Outer fold F2 scores: {outer_scores}")
-    print(f"Mean Outer F2 Score: {np.mean(outer_scores):.4f} +/- {np.std(outer_scores):.4f}")
-    
+    print(
+        f"Mean Outer F2 Score: {np.mean(outer_scores):.4f} +/- {np.std(outer_scores):.4f}"
+    )
+
     if confusion_matrices:
         sum_cm = np.sum(confusion_matrices, axis=0).tolist()
 
         normalized_confusion_matrices = [cm / np.sum(cm) for cm in confusion_matrices]
         mean_cm = (np.mean(normalized_confusion_matrices, axis=0) * 100).tolist()
         std_cm = (np.std(normalized_confusion_matrices, axis=0) * 100).tolist()
-        
+
         print("Average Confusion Matrix (Mean +/- Std):")
-        print(f"  Negative (Actual) [TN, FP]: [{mean_cm[0][0]:.4f}% +/- {std_cm[0][0]:.4f}%, {mean_cm[0][1]:.4f}% +/- {std_cm[0][1]:.4f}%]")
-        print(f"  Positive (Actual) [FN, TP]: [{mean_cm[1][0]:.4f}% +/- {std_cm[1][0]:.4f}%, {mean_cm[1][1]:.4f}% +/- {std_cm[1][1]:.4f}%]")
-        
+        print(
+            f"  Negative (Actual) [TN, FP]: [{mean_cm[0][0]:.4f}% +/- {std_cm[0][0]:.4f}%, {mean_cm[0][1]:.4f}% +/- {std_cm[0][1]:.4f}%]"
+        )
+        print(
+            f"  Positive (Actual) [FN, TP]: [{mean_cm[1][0]:.4f}% +/- {std_cm[1][0]:.4f}%, {mean_cm[1][1]:.4f}% +/- {std_cm[1][1]:.4f}%]"
+        )
+
         print("Total Counts:")
         print(f"  Negative (Actual) [TN, FP]: [{sum_cm[0][0]}, {sum_cm[0][1]}]")
         print(f"  Positive (Actual) [FN, TP]: [{sum_cm[1][0]}, {sum_cm[1][1]}]")
-        
+
         cm_path = output_dir / "average_confusion_matrix.json"
         with open(cm_path, "w") as f:
-            json.dump({
-                "mean_confusion_matrix": mean_cm,
-                "std_confusion_matrix": std_cm,
-                "label_order": [False, True]
-            }, f, indent=4)
-            
+            json.dump(
+                {
+                    "mean_confusion_matrix": mean_cm,
+                    "std_confusion_matrix": std_cm,
+                    "label_order": [False, True],
+                },
+                f,
+                indent=4,
+            )
+
     return outer_scores
 
 
 def load_and_prepare_labels(
-    bandpass_table_df: pd.DataFrame,
-    paired_features: pd.DataFrame,
-    config: dict
+    bandpass_table_df: pd.DataFrame, paired_features: pd.DataFrame, config: dict
 ) -> pd.Series:
     """Loads flagtemplates, broadcasts anomalies, and maps label classifications.
 
@@ -560,7 +609,7 @@ def check_existing_outputs(config: dict, config_dir: Path) -> None:
     Raises:
         FileExistsError: If any output file or directory already exists.
     """
-    existing_items: List[Path] = []
+    existing_items: list[Path] = []
 
     model_path = Path(config["model"]["path"])
     if model_path.exists():
@@ -620,9 +669,11 @@ def main() -> None:
 
     if args.sample is not None:
         if args.sample < 1.0:
-            bandpass_table_df = bandpass_table_df.iloc[:int(len(bandpass_table_df) * args.sample)]
+            bandpass_table_df = bandpass_table_df.iloc[
+                : int(len(bandpass_table_df) * args.sample)
+            ]
         else:
-            bandpass_table_df = bandpass_table_df.iloc[:int(args.sample)]
+            bandpass_table_df = bandpass_table_df.iloc[: int(args.sample)]
 
     assert isinstance(bandpass_table_df, pd.DataFrame)
 
@@ -654,19 +705,29 @@ def main() -> None:
         # 1. Run nested CV to compute generalized outer loop scores
         config_dir = args.config.parent
         run_nested_cv(paired_features, label, config, config_dir)
-        
+
         # 2. Find best final hyperparameters on all data
         print("Tuning final model hyperparameters on all data...")
-        best_params = tune_hyperparameters(paired_features, label, cast(pd.MultiIndex, paired_features.index), config)
-        
+        best_params = tune_hyperparameters(
+            paired_features, label, cast(pd.MultiIndex, paired_features.index), config
+        )
+
         # 3. Train the final model using best found hyperparameters on all data
         column_categories, X_train, y_train, X_test, y_test = prepare_data(
-            paired_features, label, cast(pd.MultiIndex, paired_features.index), cast(pd.MultiIndex, paired_features.index), config
+            paired_features,
+            label,
+            cast(pd.MultiIndex, paired_features.index),
+            cast(pd.MultiIndex, paired_features.index),
+            config,
         )
         model = train_model(X_train, y_train, X_test, y_test, config, best_params)
     else:
         column_categories, X_train, y_train, X_test, y_test = prepare_data(
-            paired_features, label, cast(pd.MultiIndex, paired_features.index), cast(pd.MultiIndex, paired_features.index), config
+            paired_features,
+            label,
+            cast(pd.MultiIndex, paired_features.index),
+            cast(pd.MultiIndex, paired_features.index),
+            config,
         )
         model = train_model(X_train, y_train, X_test, y_test, config)
 
@@ -682,4 +743,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

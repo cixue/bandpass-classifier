@@ -5,17 +5,16 @@ calculated scan statistics outputs (fixed, masked, and unmasked windows), provid
 features such as window scores, starting and ending channel indices, and segment widths.
 """
 
-from typing import Any, Dict
+from typing import Any
 
 import pandas as pd
-
 from bandpass_classifier.features.extractor import Extractor
 from bandpass_classifier.features.scan_statistics import scan_statistics as ss
 from bandpass_classifier.utils import memory
 
 
 @memory().cache
-def _cached_compute_scan_statistics_scores(*args: Any, **kwargs: Any) -> Dict[str, Any]:
+def _cached_compute_scan_statistics_scores(*args: Any, **kwargs: Any) -> dict[str, Any]:
     """Helper wrapper to cache scan statistics computations.
 
     Args:
@@ -143,10 +142,16 @@ for scan_mode in ["fixed", "masked", "unmasked"]:
     start_name = f"win_{scan_mode}_start"
     end_name = f"win_{scan_mode}_end"
 
-    Extractor.register(name=f"score_{scan_mode}", deps=["scan_statistics"])(ScoreExtractor(scan_mode))
-    Extractor.register(name=start_name, deps=["scan_statistics"])(WinStartExtractor(scan_mode))
-    Extractor.register(name=end_name, deps=["scan_statistics"])(WinEndExtractor(scan_mode))
+    Extractor.register(name=f"score_{scan_mode}", deps=["scan_statistics"])(
+        ScoreExtractor(scan_mode)
+    )
+    Extractor.register(name=start_name, deps=["scan_statistics"])(
+        WinStartExtractor(scan_mode)
+    )
+    Extractor.register(name=end_name, deps=["scan_statistics"])(
+        WinEndExtractor(scan_mode)
+    )
     Extractor.register(
         name=f"segment_width_{scan_mode}",
-        deps=["frequency_array", start_name, end_name]
+        deps=["frequency_array", start_name, end_name],
     )(SegmentWidthExtractor(start_name, end_name))
