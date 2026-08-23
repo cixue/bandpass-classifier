@@ -48,6 +48,10 @@ def main() -> None:
     initialize_feature_extractor(config)
     all_paired_features = extract_paired_features(bandpass_table_df, config)
 
+    if all_paired_features.empty:
+        print("No valid spectrum pairs found in the bandpass table to predict.")
+        return
+
     categories_path = resolve_path(
         config["model"]["column_categories"], args.config.parent
     )

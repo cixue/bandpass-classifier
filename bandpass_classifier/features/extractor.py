@@ -6,6 +6,7 @@ It also provides initializer and wrapper functions to extract paired features.
 """
 
 import math
+import warnings
 from collections.abc import Callable
 from functools import partial
 from graphlib import CycleError, TopologicalSorter
@@ -257,19 +258,25 @@ def extract_paired_features(
     Returns:
         pd.DataFrame: A DataFrame of paired features.
     """
+    paired_level = config["features"]["paired_level"]
+    if not bandpass_table_df.empty:
+        bandpass_table_df = bandpass_table_df.groupby(level=paired_level).filter(
+            lambda x: len(x) == 2
+        )
+
     requested_features = (
         config["features"]["shared_features"] + config["features"]["spectrum_features"]
     )
     all_features = Extractor.extract(bandpass_table_df, features=requested_features)
-    return get_paired_features(
+    return pair_features(
         all_features,
-        config["features"]["paired_level"],
+        paired_level,
         config["features"]["shared_features"],
         config["features"]["spectrum_features"],
     )
 
 
-def get_paired_features(
+def pair_features(
     features: pd.DataFrame,
     level: list[str],
     shared_features_list: list[str],
@@ -289,6 +296,15 @@ def get_paired_features(
     Returns:
         pd.DataFrame: Paired and joined features DataFrame.
     """
+    expected_columns = shared_features_list + [
+        f"{col}_{i}" for col in spectrum_features_list for i in (0, 1)
+    ]
+    if features.empty:
+        return pd.DataFrame(
+            columns=expected_columns,
+            index=pd.MultiIndex.from_tuples([], names=level),
+        )
+
     features = features.reset_index(
         [name for name in features.index.names if name not in level], drop=True
     )
@@ -299,6 +315,12 @@ def get_paired_features(
     spectrum_features = (
         spectrum_features.groupby(level).filter(lambda x: len(x) == 2).copy()
     )
+    if spectrum_features.empty:
+        return pd.DataFrame(
+            columns=expected_columns,
+            index=pd.MultiIndex.from_tuples([], names=level),
+        )
+
     spectrum_features["_row_number_"] = spectrum_features.groupby(
         spectrum_features.index.names
     ).cumcount()
@@ -309,3 +331,24 @@ def get_paired_features(
         lambda x: "_".join(map(str, x))
     )
     return shared_features.join(spectrum_features, how="inner")
+
+
+def get_paired_features(
+    features: pd.DataFrame,
+    level: list[str],
+    shared_features_list: list[str],
+    spectrum_features_list: list[str],
+) -> pd.DataFrame:
+    """[Deprecated] Use `pair_features` instead."""
+    warnings.warn(
+        "`get_paired_features` is deprecated and will be removed in a future version. "
+        "Use `pair_features` instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return pair_features(
+        features=features,
+        level=level,
+        shared_features_list=shared_features_list,
+        spectrum_features_list=spectrum_features_list,
+    )
