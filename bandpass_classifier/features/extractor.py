@@ -5,6 +5,7 @@ calculates feature dependency graphs, and runs extraction pipelines in parallel.
 It also provides initializer and wrapper functions to extract paired features.
 """
 
+import math
 from collections.abc import Callable
 from functools import partial
 from graphlib import CycleError, TopologicalSorter
@@ -13,7 +14,7 @@ from typing import Any
 import pandas as pd
 from tqdm.contrib.concurrent import process_map
 
-from ..utils import get_max_workers
+from ..utils import get_chunk_size, get_max_workers
 
 __all__ = ["Extractor"]
 
@@ -94,24 +95,25 @@ class Extractor:
         df: pd.DataFrame,
         *,
         features: list[str],
-        chunk_size: int = 16,
+        chunk_size: int | None = None,
         max_workers: int | None = None,
     ) -> pd.DataFrame:
         """Extracts specified features from the input DataFrame.
 
-        Resolves dependencies topologically, splits the input DataFrame into chunks,
-        processes them in parallel, and gathers the requested features.
+        Resolves dependencies topologically, splits the input DataFrame into chunks
+        using round-robin interleaving, processes them in parallel, and gathers the requested features.
 
         Args:
             df: Input DataFrame.
             features: List of feature names to extract.
-            chunk_size: Number of rows per parallel processing chunk.
+            chunk_size: Number of rows per parallel processing chunk. If None, checks
+                the BANDPASS_CHUNK_SIZE environment variable before falling back to 8.
             max_workers: The maximum number of worker processes. If None, checks
                 the BANDPASS_MAX_WORKERS environment variable before falling back
                 to the default multiprocessing pool size.
 
         Returns:
-            pd.DataFrame: A DataFrame containing the requested features.
+            pd.DataFrame: A DataFrame containing the requested features in the original row order.
 
         Raises:
             ValueError: If dependencies or external data dependencies cannot be resolved.
@@ -119,6 +121,9 @@ class Extractor:
         """
         if max_workers is None:
             max_workers = get_max_workers()
+
+        if chunk_size is None:
+            chunk_size = get_chunk_size()
 
         # Make a copy to prevent modifying input
         requested_features = set(features)
@@ -161,7 +166,19 @@ class Extractor:
         except CycleError as e:
             raise CycleError(f"Cyclic dependency found: {' -> '.join(e.args[1])}")
 
-        chunks = [df.iloc[i : i + chunk_size] for i in range(0, len(df), chunk_size)]
+        if len(df) == 0:
+            return pd.DataFrame(columns=features, index=df.index)
+
+        if chunk_size <= 0:
+            chunks = [df]
+        else:
+            num_chunks = math.ceil(len(df) / chunk_size)
+            chunks = (
+                [df.iloc[i::num_chunks] for i in range(num_chunks)]
+                if num_chunks > 1
+                else [df]
+            )
+
         processed_chunks = process_map(
             partial(
                 cls._process_chunk,
@@ -175,8 +192,8 @@ class Extractor:
             max_workers=max_workers,
         )
 
-        # Strip out intermediate results.
-        result = pd.concat(processed_chunks)[features]
+        # Strip out intermediate results and restore original row order.
+        result = pd.concat(processed_chunks).loc[df.index][features]
         assert isinstance(result, pd.DataFrame)
         return result
 

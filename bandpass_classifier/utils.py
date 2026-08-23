@@ -7,6 +7,7 @@ Environment Variables:
     BANDPASS_ENABLE_CACHE: Set to '1', 'true', or 'yes' to enable joblib disk caching (default: disabled).
     BANDPASS_CACHE_DIR: Custom path for the joblib cache directory (default: '.cache').
     BANDPASS_MAX_WORKERS: Maximum worker process count for parallel feature extraction (default: auto/all cores).
+    BANDPASS_CHUNK_SIZE: Number of rows per processing chunk in parallel feature extraction (default: 8).
     BANDPASS_DATA_DIR: Base directory path for training data patterns (default: none / paths as configured).
 """
 
@@ -29,6 +30,10 @@ ENV_VARS: dict[str, dict[str, str]] = {
     "BANDPASS_MAX_WORKERS": {
         "description": "Number of worker processes to use for parallel feature extraction in process_map.",
         "default": "None (auto/all cores)",
+    },
+    "BANDPASS_CHUNK_SIZE": {
+        "description": "Number of rows per processing chunk in parallel feature extraction.",
+        "default": "8",
     },
     "BANDPASS_DATA_DIR": {
         "description": "Base directory for training data patterns (supports absolute and relative paths).",
@@ -67,6 +72,18 @@ def get_max_workers() -> int | None:
     if val is not None and val.isdigit():
         return int(val)
     return None
+
+
+def get_chunk_size() -> int:
+    """Gets the configured chunk size for parallel processing.
+
+    Returns:
+        int: The chunk size from BANDPASS_CHUNK_SIZE, defaulting to 8 if unset or invalid.
+    """
+    val = os.environ.get("BANDPASS_CHUNK_SIZE")
+    if val is not None and val.isdigit() and int(val) > 0:
+        return int(val)
+    return 8
 
 
 def get_data_dir() -> Path | None:
