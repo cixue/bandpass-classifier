@@ -41,8 +41,8 @@ def main() -> None:
     parser.add_argument(
         "--output_prediction_path",
         type=Path,
-        required=True,
-        help="Path to output the prediction as a CSV format.",
+        default=None,
+        help="Optional path to output the prediction as a CSV format.",
     )
     args = parser.parse_args()
 
@@ -75,7 +75,8 @@ def main() -> None:
         prediction, index=all_paired_features.index, dtype=bool, name="Prediction"
     )
 
-    prediction.to_frame().to_csv(args.output_prediction_path)
+    if args.output_prediction_path is not None:
+        prediction.to_frame().to_csv(args.output_prediction_path)
     print(all_paired_features[prediction])
 
 
