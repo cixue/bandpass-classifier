@@ -30,6 +30,7 @@ from .io_utils import (
 from .utils import (
     broadcast_na,
     convert_to_category,
+    get_data_dir,
     get_env_vars_help_epilog,
     resolve_path,
 )
@@ -44,9 +45,12 @@ def get_all_bandpass_table_df(config: dict) -> pd.DataFrame:
     Returns:
         pd.DataFrame: A unified DataFrame containing all loaded bandpass data.
     """
-    all_bandpass_table_path = list(
-        map(Path, glob.glob(config["training"]["data"]["bandpass_table_pattern"]))
+    pattern = str(
+        resolve_path(
+            config["training"]["data"]["bandpass_table_pattern"], get_data_dir()
+        )
     )
+    all_bandpass_table_path = list(map(Path, glob.glob(pattern)))
     print(f"Training model on {len(all_bandpass_table_path)} bandpass tables.")
     return pd.concat([get_full_dataframe(path) for path in all_bandpass_table_path])
 
@@ -577,11 +581,12 @@ def load_and_prepare_labels(
     Returns:
         pd.Series: A Series of boolean labels corresponding to the paired features index.
     """
-    all_flagtemplate_path = list(
-        map(Path, glob.glob(config["training"]["data"]["flagtemplate_pattern"]))
+    pattern = str(
+        resolve_path(config["training"]["data"]["flagtemplate_pattern"], get_data_dir())
     )
+    all_flagtemplate_path = list(map(Path, glob.glob(pattern)))
     if not all_flagtemplate_path:
-        raise ValueError("No flagtemplate files found matching pattern.")
+        raise ValueError(f"No flagtemplate files found matching pattern: {pattern}")
     flagtemplate_df = pd.concat(map(get_flagtemplate_dataframe, all_flagtemplate_path))
 
     # Broadcast anomalies based on flagtemplates

@@ -136,10 +136,14 @@ The pipeline supports the following environment variables for caching and perfor
 | `BANDPASS_ENABLE_CACHE` | `0` (disabled) | Set to `1`, `true`, or `yes` to enable joblib disk caching for computationally intensive feature extractors (e.g. scan statistics). |
 | `BANDPASS_CACHE_DIR` | `.cache` | Directory path where joblib cache artifacts will be stored when caching is enabled. |
 | `BANDPASS_MAX_WORKERS` | `None` (auto/all cores) | Number of worker processes to use for parallel feature extraction in `process_map`. |
+| `BANDPASS_DATA_DIR` | `None` (paths as configured) | Base directory path for training data patterns (supports absolute and relative paths). |
 
 #### Examples
 
 ```bash
+# Set a base directory for training data patterns
+BANDPASS_DATA_DIR=/path/to/data python -m bandpass_classifier.train --config models/v1/config.toml
+
 # Enable joblib disk caching with default location (.cache/)
 BANDPASS_ENABLE_CACHE=1 python -m bandpass_classifier.train --config models/v1/config.toml
 

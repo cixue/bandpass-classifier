@@ -7,6 +7,7 @@ Environment Variables:
     BANDPASS_ENABLE_CACHE: Set to '1', 'true', or 'yes' to enable joblib disk caching (default: disabled).
     BANDPASS_CACHE_DIR: Custom path for the joblib cache directory (default: '.cache').
     BANDPASS_MAX_WORKERS: Maximum worker process count for parallel feature extraction (default: auto/all cores).
+    BANDPASS_DATA_DIR: Base directory path for training data patterns (default: none / paths as configured).
 """
 
 import functools
@@ -28,6 +29,10 @@ ENV_VARS: dict[str, dict[str, str]] = {
     "BANDPASS_MAX_WORKERS": {
         "description": "Number of worker processes to use for parallel feature extraction in process_map.",
         "default": "None (auto/all cores)",
+    },
+    "BANDPASS_DATA_DIR": {
+        "description": "Base directory for training data patterns (supports absolute and relative paths).",
+        "default": "None (uses paths as configured in config.toml)",
     },
 }
 
@@ -61,6 +66,21 @@ def get_max_workers() -> int | None:
     val = os.environ.get("BANDPASS_MAX_WORKERS")
     if val is not None and val.isdigit():
         return int(val)
+    return None
+
+
+def get_data_dir() -> Path | None:
+    """Gets the configured base directory for training data.
+
+    Returns:
+        Optional[Path]: The Path object for the base data directory specified by
+            BANDPASS_DATA_DIR (or BANDPASS_TRAINING_DATA_DIR), or None if unset.
+    """
+    val = os.environ.get("BANDPASS_DATA_DIR") or os.environ.get(
+        "BANDPASS_TRAINING_DATA_DIR"
+    )
+    if val:
+        return Path(val)
     return None
 
 
