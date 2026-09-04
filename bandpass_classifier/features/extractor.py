@@ -260,7 +260,7 @@ def extract_paired_features(
     """
     paired_level = config["features"]["paired_level"]
     if not bandpass_table_df.empty:
-        bandpass_table_df = bandpass_table_df.groupby(level=paired_level).filter(
+        bandpass_table_df = bandpass_table_df.groupby(paired_level).filter(
             lambda x: len(x) == 2
         )
 
